@@ -1,7 +1,17 @@
-import { Body, Controller, Get, MiddlewareConsumer, Post } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  MiddlewareConsumer,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common'
 import { UserService } from './user.service'
 import { UserDto } from './dto/user.dto'
 import { LogRequestMiddleware } from '../../app.middleware'
+import { LoginDto } from './dto/login.dto'
 
 @Controller('user')
 export class UserController {
@@ -23,7 +33,30 @@ export class UserController {
    */
   @Post()
   async create(@Body() data: UserDto): Promise<UserDto> {
-    console.log(data)
     return this.userService.create(data)
+  }
+
+  /**
+   * 更新用户
+   */
+  @Patch()
+  async update(@Body() data: UserDto): Promise<UserDto> {
+    return this.userService.update(data)
+  }
+
+  /**
+   * 更新用户密码
+   */
+  @Patch('pwd')
+  async updatePwd(@Body() data: LoginDto): Promise<void> {
+    return this.userService.updatePwd(data)
+  }
+
+  /**
+   * 删除用户（注销）
+   */
+  @Delete()
+  async delete(@Query('userId') userId: string): Promise<void> {
+    return this.userService.delete(userId)
   }
 }

@@ -4,6 +4,8 @@ import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { UserModule } from './modules/user/user.module'
+import { AuthModule } from './modules/auth/auth.module'
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -23,6 +25,7 @@ import { UserModule } from './modules/user/user.module'
       inject: [ConfigService],
     }),
     UserModule, // 用户模块
+    AuthModule, // 登陆注册模块
   ],
   controllers: [AppController],
   providers: [AppService],
