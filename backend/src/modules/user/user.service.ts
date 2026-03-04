@@ -7,6 +7,8 @@ import { DataSource } from 'typeorm'
 import { UserPwdDto } from './dto/userPwd.dto'
 import { EncryptionService } from '../auth/encryption/encryption.service'
 import { LoginDto } from './dto/login.dto'
+import { CreateUserDto } from './dto/createUser.dto'
+import { UpdateUserDto } from './dto/updateUser.dto'
 
 @Injectable()
 export class UserService {
@@ -31,30 +33,40 @@ export class UserService {
    * @param id 用户ID
    * @param isExistType 判断存在 true 判断不存在 false
    */
-  async userExist(id: string, isExistType: boolean): Promise<void> {
+  async userExist(id: string, isExistType: boolean): Promise<UserDto> {
     const user = await this.userDAO.findUserById(id)
     const responseMsg = isExistType ? '用户记录不存在' : '该用户已经存在'
     if ((!user && isExistType) || (user && !isExistType)) {
       throw new HttpException(responseMsg, HttpStatus.BAD_REQUEST)
     }
+    return user
   }
 
   /**
    * 创建新用户 1.更新 user 表 2. 更新 user_pwd 表
    * @param userData
    */
-  async create(userData: UserDto): Promise<UserDto> {
+  async create(userData: CreateUserDto): Promise<UserDto> {
     return this.dataSource.transaction(async (manager) => {
       // 1. 校验用户是否存在
       await this.userExist(userData.id, false)
+      if (!userData.username) {
+        userData.username = userData.id
+      }
+
+      if (!userData.password) {
+        throw new HttpException('密码不能为空', HttpStatus.BAD_REQUEST)
+      }
 
       // 2. 创建用户
       const user = await this.userDAO.createUser(userData, manager)
 
       // 3. 创建用户-密码对
+      // 3.1 构造新的加盐密码
+      const saltedPwd = await this.encryptionService.hashPassword(userData.password)
       const userPwdData = {
         userId: user.id,
-        pwdHash: '',
+        pwdHash: saltedPwd,
       }
       await this.userPwdDAO.createUserPwd(userPwdData, manager)
 
@@ -66,15 +78,21 @@ export class UserService {
    * 更新用户信息
    * @param userData
    */
-  async update(userData: UserDto): Promise<UserDto> {
+  async update(userData: UpdateUserDto): Promise<UserDto> {
     return this.dataSource.transaction(async (manager) => {
       // 1. 校验用户是否存在
-      await this.userExist(userData.id, true)
+      const user = await this.userExist(userData.id, true)
+
+      const newUserData = {
+        ...user,
+        ...userData,
+        id: user.id,
+      }
 
       // 2. 更新用户信息
-      const user = await this.userDAO.updateUser(userData, manager)
+      const newUser = await this.userDAO.updateUser(newUserData, manager)
 
-      return this.userDAO.toUserDto(user)
+      return this.userDAO.toUserDto(newUser)
     })
   }
 
