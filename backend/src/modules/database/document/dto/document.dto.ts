@@ -11,6 +11,10 @@ export class DocumentDto {
 
   @IsString()
   @IsNotEmpty()
+  fileHash: string
+
+  @IsString()
+  @IsNotEmpty()
   collectionId: string
 
   @IsString()

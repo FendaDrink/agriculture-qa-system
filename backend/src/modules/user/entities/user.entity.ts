@@ -9,7 +9,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm'
-import { IsDate, IsInt, IsString } from 'class-validator'
+import { IsInt, IsString } from 'class-validator'
 
 @Entity('user')
 export class UserEntity {

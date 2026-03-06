@@ -2,7 +2,7 @@
  * documents 表
  */
 import { Entity, Column, PrimaryColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm'
-import { IsDate, IsString } from 'class-validator'
+import { IsString } from 'class-validator'
 
 @Entity('documents')
 export class DocumentEntity {
@@ -13,6 +13,10 @@ export class DocumentEntity {
   @Column({ name: 'file_name', comment: '文档名称' })
   @IsString()
   fileName: string
+
+  @Column({ name: 'file_hash', comment: '文档哈希带后缀' })
+  @IsString()
+  fileHash: string
 
   @Column({ name: 'collection_id', comment: '所属知识库ID' })
   @IsString()

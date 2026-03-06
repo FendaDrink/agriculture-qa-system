@@ -96,7 +96,7 @@ export class DocumentService {
       // 2. 删除文档中的记录
       try {
         // 删除向量库中对应分段的内容
-        await this.externalApiService.deleteDocument(doc[0].collectionId, docId)
+        await this.externalApiService.deleteDocument(doc[0].collectionId, docId, doc[0].fileHash)
         // 删除 document 表中记录 & 改文件对应的分段key-value表
         await this.documentDAO.deleteDocument(docId, manager)
       } catch (error) {
