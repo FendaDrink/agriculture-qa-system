@@ -8,10 +8,12 @@ import { UserPwdDAO } from './dao/userPwd.dao'
 import { RoleDao } from './dao/role.dao'
 import { UserPwdEntity } from './entities/userPwd.entity'
 import { RoleEntity } from './entities/role.entity'
+import { EncryptionService } from '../auth/encryption/encryption.service'
+import { AuthModule } from '../auth/auth.module'
 
 @Module({
-  imports: [TypeOrmModule.forFeature([UserEntity, UserPwdEntity, RoleEntity])],
-  providers: [UserService, UserDAO, UserPwdDAO, RoleDao],
+  imports: [TypeOrmModule.forFeature([UserEntity, UserPwdEntity, RoleEntity]), AuthModule],
+  providers: [UserService, EncryptionService, UserDAO, UserPwdDAO, RoleDao],
   controllers: [UserController],
 })
 export class UserModule {}

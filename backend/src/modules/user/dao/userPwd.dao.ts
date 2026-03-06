@@ -1,9 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { EntityManager, Repository } from 'typeorm'
 import { UserPwdEntity } from '../entities/userPwd.entity'
 import { UserPwdDto } from '../dto/userPwd.dto'
-import { UserEntity } from '../entities/user.entity'
 
 @Injectable()
 export class UserPwdDAO {
@@ -41,24 +40,11 @@ export class UserPwdDAO {
 
   /**
    * 更新指定用户ID的用户-密码对（修改密码）
-   * @param userId
    * @param userPwdDto
    * @param manager
    */
-  async updateUserPwd(
-    userId: number,
-    userPwdDto: UserPwdDto,
-    manager: EntityManager,
-  ): Promise<UserPwdDto> {
-    const userPwd = await manager.preload(UserPwdEntity, {
-      userId,
-      ...userPwdDto,
-    })
-
-    if (!userPwd) {
-      throw new NotFoundException('用户不存在')
-    }
-
+  async updateUserPwd(userPwdDto: UserPwdDto, manager: EntityManager): Promise<UserPwdDto> {
+    const userPwd = await manager.preload(UserPwdEntity, userPwdDto)
     return manager.save(userPwd)
   }
 
@@ -68,6 +54,6 @@ export class UserPwdDAO {
    * @param manager
    */
   async deleteUserPwd(userId: string, manager: EntityManager): Promise<void> {
-    await manager.delete(UserEntity, userId)
+    await manager.delete(UserPwdEntity, userId)
   }
 }

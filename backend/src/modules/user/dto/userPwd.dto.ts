@@ -1,9 +1,11 @@
-import { IsNotEmpty, IsPhoneNumber } from 'class-validator'
+import { IsNotEmpty, IsPhoneNumber, IsString } from 'class-validator'
 
 export class UserPwdDto {
-  @IsPhoneNumber()
+  @IsPhoneNumber('CN')
+  @IsNotEmpty()
   userId: string
 
+  @IsString()
   @IsNotEmpty()
   pwdHash: string
 }

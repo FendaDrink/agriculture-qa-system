@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { EntityManager, Repository } from 'typeorm'
 import { UserEntity } from '../entities/user.entity'
@@ -40,20 +40,11 @@ export class UserDAO {
 
   /**
    * 更新指定用户ID的用户
-   * @param id
    * @param userDto
    * @param manager
    */
-  async updateUser(id: string, userDto: UserDto, manager: EntityManager): Promise<UserDto> {
-    const user = await manager.preload(UserEntity, {
-      id,
-      ...userDto,
-    }) // 更新用户
-
-    if (!user) {
-      throw new NotFoundException('用户不存在')
-    }
-
+  async updateUser(userDto: UserDto, manager: EntityManager): Promise<UserDto> {
+    const user = await manager.preload(UserEntity, userDto) // 更新用户
     return manager.save(user)
   }
 
