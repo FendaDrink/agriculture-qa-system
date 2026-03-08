@@ -18,7 +18,7 @@ export class ChatMessageEntity {
   @IsInt()
   sender: number
 
-  @Column({ comment: '消息内容' })
+  @Column({ type: 'longtext', comment: '消息内容' })
   @IsString()
   content: string
 

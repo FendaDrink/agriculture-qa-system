@@ -1,0 +1,76 @@
+.session-page {
+  padding: 22px;
+}
+
+.session-create {
+  padding: 16px;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.session-input {
+  flex: 1;
+  height: 70px;
+  line-height: 70px;
+  background: #f3f7f2;
+  border-radius: 12px;
+  padding: 0 16px;
+}
+
+.session-create-btn {
+  min-width: 160px;
+  height: 70px;
+  line-height: 70px;
+  background: #0c6b43;
+  color: #fff;
+  border-radius: 12px;
+  padding: 0;
+  font-size: 26px;
+}
+
+.session-empty {
+  padding: 30px;
+  color: #5d7569;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.session-item {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 2px solid transparent;
+}
+
+.session-item.active {
+  border-color: #6fb489;
+}
+
+.session-main {
+  flex: 1;
+}
+
+.session-title {
+  display: block;
+  font-size: 30px;
+  color: #1e2f24;
+}
+
+.session-time {
+  display: block;
+  margin-top: 8px;
+  color: #6b8378;
+  font-size: 22px;
+}
+
+.session-del-btn {
+  background: #fff1ef;
+  color: #b94132;
+  border-radius: 10px;
+}

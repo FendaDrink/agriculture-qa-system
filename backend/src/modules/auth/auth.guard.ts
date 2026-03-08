@@ -17,6 +17,7 @@ export class AuthGuard implements CanActivate {
       request.user = this.jwtService.verify(token) // 将解码后的用户信息附加到请求对象
       return true
     } catch (error) {
+      console.log(error)
       if (error.name === 'TokenExpiredError') {
         throw new UnauthorizedException('登陆信息失效，请重新登陆后再试')
       } else {

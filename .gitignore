@@ -2,3 +2,6 @@
 backend/.idea
 backend/dist
 backend/node_modules
+frontend/.swc
+frontend/dist
+frontend/node_modules

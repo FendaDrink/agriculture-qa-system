@@ -45,40 +45,49 @@ export class ChatService {
       }
       await this.chatMessageService.createChatMessage(userMsg)
       const stream: Readable = await this.externalApiService.completion(completionData)
-      res.setHeader('Content-Type', 'text/event-stream')
+      res.status(200)
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
       res.setHeader('Cache-Control', 'no-cache')
       res.setHeader('Connection', 'keep-alive')
+      res.setHeader('X-Accel-Buffering', 'no')
+      res.flushHeaders?.()
 
       let fullText = ''
+      let pending = ''
+
+      const parseSSELine = (line: string) => {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data:')) return
+
+        const data = trimmed.replace(/^data:\s*/, '')
+        if (!data || data === '[DONE]') return
+
+        try {
+          const json = JSON.parse(data)
+          const content = json?.choices?.[0]?.delta?.content
+          if (content) fullText += content
+        } catch {
+          // 忽略非 JSON 行，不中断流式返回
+        }
+      }
 
       // 接收到内容的处理
       stream.on('data', (chunk) => {
-        const text = chunk.toString()
-
-        // 按照换行符将 chunk 进行分段
-        const lines = text.split('\n')
-
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
-            const data = line.replace('data:', '').trim()
-            if (data === '[DONE]') continue
-            try {
-              const json = JSON.parse(data)
-              const content = json?.choices?.[0]?.delta?.content
-              if (content) {
-                fullText += content
-              }
-            } catch (e) {
-              res.end()
-            }
-          }
-        }
+        const text = chunk.toString('utf8')
+        pending += text
+        const lines = pending.split(/\r?\n/)
+        pending = lines.pop() || ''
+        lines.forEach(parseSSELine)
         res.write(chunk)
       })
 
       // 流式结束时的处理
       stream.on('end', async () => {
-        console.log('最终完整内容:', fullText)
+        if (pending.trim()) parseSSELine(pending)
+
+        if (!fullText.trim()) {
+          fullText = '未获取到有效回复，请稍后重试。'
+        }
 
         // 写入回答
         const assistMsg = {
@@ -93,6 +102,9 @@ export class ChatService {
       // 错误处理
       stream.on('error', (err) => {
         console.error(err)
+        if (!res.writableEnded) {
+          res.write('data: {"error":"stream_error"}\n\n')
+        }
         res.end()
       })
       // stream.pipe(res)
