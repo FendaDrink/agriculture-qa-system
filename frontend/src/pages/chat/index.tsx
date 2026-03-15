@@ -1,6 +1,6 @@
 import { Button, Input, ScrollView, Text, View } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
-import React, { useMemo, useState} from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import MessageBubble from '../../components/MessageBubble'
 import {
   createSession,
@@ -21,12 +21,21 @@ const ChatPage = () => {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messageScrollTop, setMessageScrollTop] = useState(0)
   const [inputValue, setInputValue] = useState('')
   const [loading, setLoading] = useState(false)
   const [needsSetup, setNeedsSetup] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
 
   const quickQuestions = useMemo(() => getQuickQuestions(), [])
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      setMessageScrollTop(0)
+      return
+    }
+    setMessageScrollTop((prev) => prev + 9999)
+  }, [messages])
 
   const buildSessionTitle = (query: string): string => {
     const title = query.trim().slice(0, 10)
@@ -165,6 +174,13 @@ const ChatPage = () => {
 
   const onDeleteSession = async (sessionId: string) => {
     try {
+      const confirm = await Taro.showModal({
+        title: '删除会话',
+        content: '确定要删除这个会话吗？此操作不可恢复。',
+        confirmText: '删除',
+        cancelText: '取消',
+      })
+      if (!confirm.confirm) return
       await deleteSession(sessionId)
       if (sessionId === activeSessionId) {
         setActiveSessionId('')
@@ -218,7 +234,7 @@ const ChatPage = () => {
               新建
             </Button>
           </View>
-          <ScrollView scrollY className='session-scroll'>
+          <ScrollView scrollY showScrollbar={false} className='session-scroll'>
             {sessions.map((item) => (
               <View
                 key={item.id}
@@ -244,7 +260,13 @@ const ChatPage = () => {
         </View>
 
         <View className='chat-panel'>
-          <ScrollView scrollY showScrollbar={false} className='message-scroll' scrollWithAnimation>
+          <ScrollView
+            scrollY
+            showScrollbar={false}
+            className='message-scroll'
+            scrollWithAnimation
+            scrollTop={messageScrollTop}
+          >
             {needsSetup ? (
               <View className='welcome-card'>
                 <Text className='welcome-title'>先完成连接配置，再开始问答</Text>
