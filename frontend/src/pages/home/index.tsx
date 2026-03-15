@@ -19,7 +19,7 @@ const banners = [
   {
     id: 'b3',
     title: '多模态输入',
-    desc: '后续支持语音提问、图片识别，敬请期待',
+    desc: '支持语音提问、图片识别，其他多模态输入敬请期待',
     img: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80',
   },
 ]
@@ -32,7 +32,7 @@ const HomePage = () => {
         indicatorDots
         autoplay
         circular
-        interval={4200}
+        interval={3000}
         indicatorColor='rgba(255,255,255,0.4)'
         indicatorActiveColor='#0f6a43'
       >

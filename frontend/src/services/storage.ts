@@ -1,5 +1,5 @@
 import Taro from '@tarojs/taro'
-import { ChatMessage, ChatSession } from '../types/chat'
+import { ChatMessage, ChatSession } from '@/types/chat'
 
 const SESSION_KEY = 'agri:chat:sessions'
 const MESSAGE_KEY = 'agri:chat:messages'

@@ -137,12 +137,14 @@ export class ExternalApiService {
   // Base 服务聊天
   async completion(completionData: CompletionDto): Promise<any> {
     const url = '/completion'
+    const { query, model, collectionId: collection_id, history: chat_history } = completionData
     const response = await this.httpService.axiosRef.post(
       url,
       {
-        query: completionData.query,
-        model: completionData.model,
-        collection_id: completionData.collectionId,
+        query,
+        model,
+        collection_id,
+        chat_history,
       },
       {
         responseType: 'stream',

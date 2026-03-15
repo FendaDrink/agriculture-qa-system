@@ -1,6 +1,7 @@
 import { defineConfig } from '@tarojs/cli'
 import devConfig from './dev'
 import prodConfig from './prod'
+import path from 'path'
 
 const baseConfig = defineConfig({
   projectName: 'agriculture-qa-miniapp',
@@ -22,6 +23,9 @@ const baseConfig = defineConfig({
   },
   cache: {
     enable: false,
+  },
+  alias: {
+    '@': path.resolve(__dirname, '..', 'src'),
   },
   plugins: ['@tarojs/plugin-framework-react', '@tarojs/plugin-platform-weapp'],
   mini: {

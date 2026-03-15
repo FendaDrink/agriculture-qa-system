@@ -1,3 +1,3 @@
 export default definePageConfig({
-  navigationBarTitleText: '农业问答',
+  navigationBarTitleText: '湖北省农业问答',
 })

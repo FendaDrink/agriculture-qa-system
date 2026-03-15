@@ -9,8 +9,6 @@
 - 消息：`/chat/message`
 - 问答流：`/chat/completion`
 
-目前默认 `USE_MOCK = true`（文件：`src/services/chat.ts`），即使用本地缓存和模拟流式回复，不依赖后端。
-
 ## 本地运行
 0. Node 版本建议：`20.x`（避免在 Node 24 下运行 Taro）
 1. 安装依赖：`npm install`

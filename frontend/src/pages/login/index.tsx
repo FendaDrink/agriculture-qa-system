@@ -1,31 +1,33 @@
-import { Button, Input, Text, View } from '@tarojs/components'
+import {Button, Image, Input, Text, View} from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import React, { useState } from 'react'
-import { login } from '../../services/chat'
-import { getAppSettings, saveAppSettings } from '../../services/settings'
+import { login } from '@/services/chat'
+import { getAppSettings, saveAppSettings } from '@/services/settings'
+import { parseBearerTokenPayload } from '@/utils/auth'
 import './index.scss'
 
 const LoginPage = () => {
   const preset = getAppSettings()
-  const [baseUrl, setBaseUrl] = useState(preset.baseUrl)
   const [userId, setUserId] = useState(preset.userId)
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
   const onSubmit = async () => {
-    if (!baseUrl.trim() || !userId.trim() || !password.trim()) {
-      Taro.showToast({ title: '请填写完整信息', icon: 'none' })
+    if (!userId.trim() || !password.trim()) {
+      await Taro.showToast({ title: '请输入完整信息', icon: 'none' })
       return
     }
     setLoading(true)
     try {
       const token = await login(userId.trim(), password.trim())
-      saveAppSettings({ baseUrl: baseUrl.trim(), userId: userId.trim(), token })
-      Taro.showToast({ title: '登录成功', icon: 'success' })
+      const payload = parseBearerTokenPayload(token)
+      saveAppSettings({ userId: userId.trim(), token, username: payload.username })
+      await Taro.showToast({ title: '登录成功', icon: 'success' })
       setPassword('')
-      Taro.switchTab({ url: '/pages/chat/index' })
+      await Taro.switchTab({ url: '/pages/chat/index' })
     } catch (err) {
-      Taro.showToast({ title: (err as Error).message || '登录失败', icon: 'none' })
+      console.log(err)
+      await Taro.showToast({ title: (err as Error).message || '登录失败', icon: 'none' })
     } finally {
       setLoading(false)
     }
@@ -35,14 +37,6 @@ const LoginPage = () => {
     <View className='login-page'>
       <Text className='title'>农业智能问答助手</Text>
       <View className='form'>
-        <Text className='label'>后端地址</Text>
-        <Input
-          className='input'
-          value={baseUrl}
-          onInput={(e) => setBaseUrl(e.detail.value)}
-          placeholder='http://localhost:3000'
-        />
-
         <Text className='label'>用户ID（手机号）</Text>
         <Input
           className='input'

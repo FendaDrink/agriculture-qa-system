@@ -1,25 +1,17 @@
 import { Button, Text, View } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import React, { useState } from 'react'
-import { getCurrentUser } from '../../services/chat'
-import { getAppSettings, saveAppSettings } from '../../services/settings'
-import { ensureAuthed } from '../../utils/auth'
+import { getAppSettings, saveAppSettings } from '@/services/settings'
+import { ensureAuthed } from '@/utils/auth'
 import './index.scss'
 
 const ProfilePage = () => {
   const [settings, setSettings] = useState(getAppSettings())
-  const [userName, setUserName] = useState('')
-  const loggedIn = Boolean(settings.token && settings.userId)
+  const loggedIn = Boolean(settings.token && settings.userId && settings.username)
 
-  const sync = async () => {
-    const next = getAppSettings()
-    setSettings(next)
-    try {
-      const user = await getCurrentUser()
-      setUserName(user?.username || '')
-    } catch {
-      setUserName('')
-    }
+  const sync = () => {
+    const info = getAppSettings()
+    setSettings(info)
   }
 
   useDidShow(() => {
@@ -27,12 +19,11 @@ const ProfilePage = () => {
     sync()
   })
 
-  const logout = () => {
-    saveAppSettings({ token: '', userId: '' })
+  const logout = async() => {
+    saveAppSettings({ token: '', userId: '', username: '' })
     setSettings(getAppSettings())
-    setUserName('')
-    Taro.showToast({ title: '已退出登录', icon: 'none' })
-    Taro.switchTab({ url: '/pages/home/index' })
+    await Taro.showToast({ title: '已退出登录', icon: 'none' })
+    await Taro.switchTab({ url: '/pages/home/index' })
   }
 
   return (
@@ -53,11 +44,9 @@ const ProfilePage = () => {
       <View className='profile-card'>
         <Text className='profile-title'>个人信息</Text>
         <Text className='field-label'>用户ID</Text>
-        <Text className='field-value'>{settings.userId || '未登录'}</Text>
+        <Text className='field-value'>{settings.userId}</Text>
         <Text className='field-label'>昵称</Text>
-        <Text className='field-value'>{userName || '未登录'}</Text>
-        <Text className='field-label'>后端地址</Text>
-        <Text className='field-value'>{settings.baseUrl || '未配置'}</Text>
+        <Text className='field-value'>{settings.username}</Text>
       </View>
 
       {loggedIn && (

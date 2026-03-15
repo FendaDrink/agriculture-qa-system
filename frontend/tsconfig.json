@@ -8,7 +8,11 @@
     "skipLibCheck": true,
     "moduleResolution": "node",
     "resolveJsonModule": true,
-    "types": ["@tarojs/taro", "node"]
+    "types": ["@tarojs/taro", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
   "include": ["src", "config"]
 }

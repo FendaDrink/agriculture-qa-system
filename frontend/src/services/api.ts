@@ -1,6 +1,6 @@
 import Taro from '@tarojs/taro'
-import { ApiResponse } from '../types/chat'
-import { getAppSettings } from './settings'
+import { ApiResponse } from '@/types/chat'
+import {getAppSettings, saveAppSettings} from './settings'
 
 const buildUrl = (baseUrl: string, path: string, query?: Record<string, unknown>): string => {
   const cleanedBaseUrl = baseUrl.trim().replace(/\/$/, '')
@@ -18,35 +18,30 @@ const buildUrl = (baseUrl: string, path: string, query?: Record<string, unknown>
 const request = async <T>(
   path: string,
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
-  data?: Record<string, unknown>,
+  data?: Record<string, any>,
 ): Promise<T> => {
   const settings = getAppSettings()
   const baseUrl = settings.baseUrl.trim()
   const token = settings.token.trim()
-
-  if (!baseUrl) {
-    throw new Error('请先在“我的”页配置后端地址')
-  }
-
-  const needsQueryInUrl = method === 'GET' || method === 'DELETE'
-  const url = buildUrl(baseUrl, path, needsQueryInUrl ? data : undefined)
+  const url = buildUrl(baseUrl, path, data)
 
   const res = await Taro.request<ApiResponse<T>>({
     url,
     method,
-    data: needsQueryInUrl ? undefined : data,
+    data,
     header: {
       'Content-Type': 'application/json',
       Authorization:  token ? `Bearer ${token}` : '',
     },
   })
-
-  if (res.statusCode >= 400) {
-    throw new Error(res.data?.message || `请求失败：${res.statusCode}`)
-  }
-
-  if (!res.data || typeof res.data !== 'object' || !('data' in res.data)) {
-    throw new Error('后端返回格式不符合预期')
+  if (res.data.code >= 400) {
+    if (res.data.code === 401) {
+      saveAppSettings({
+        ...settings,
+        token: '',
+      })
+    }
+    throw new Error(res.data?.message || '服务器出错了，请稍后再试～')
   }
 
   return res.data.data

@@ -1,7 +1,7 @@
 import Taro from '@tarojs/taro'
 import { apiDelete, apiGet, apiPost } from './api'
 import { getAppSettings } from './settings'
-import { ChatMessage, ChatSession, CompletionPayload, UserProfile } from '../types/chat'
+import { ChatMessage, ChatSession, CompletionPayload, UserProfile } from '@/types/chat'
 
 interface StreamState {
   buffer: string
@@ -77,7 +77,7 @@ const parseSSEContent = (raw: string): string => {
   return full || raw
 }
 
-export const login = async (userId: string, password: string): Promise<string> => {
+export const login = async (userId: string, password: string) => {
   const data = await apiPost<{ token: string }>('/auth/login', { userId, password })
   return data.token
 }
@@ -147,10 +147,6 @@ export const streamCompletion = async (
   const settings = getAppSettings()
   const baseUrl = settings.baseUrl.trim().replace(/\/$/, '')
   const token = settings.token.trim()
-
-  if (!baseUrl || !token) {
-    throw new Error('请先在“我的”页完成后端配置并登录')
-  }
 
   const state: StreamState = { buffer: '', full: '' }
 

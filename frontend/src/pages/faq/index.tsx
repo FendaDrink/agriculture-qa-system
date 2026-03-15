@@ -1,18 +1,13 @@
 import { ScrollView, Text, View } from '@tarojs/components'
-import Taro, { useDidShow } from '@tarojs/taro'
+import Taro from '@tarojs/taro'
 import React from 'react'
-import { getFaqList } from '../../services/chat'
-import { ensureAuthed } from '../../utils/auth'
+import { getFaqList } from '@/services/chat'
 import './index.scss'
 
 const PREFILL_KEY = 'agri:chat:prefill-question'
 
 const FaqPage = () => {
   const faqList = getFaqList()
-
-  useDidShow(() => {
-    ensureAuthed()
-  })
 
   const askNow = (question: string) => {
     Taro.setStorageSync(PREFILL_KEY, question)

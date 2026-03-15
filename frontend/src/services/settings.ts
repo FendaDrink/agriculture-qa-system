@@ -1,5 +1,5 @@
 import Taro from '@tarojs/taro'
-import { AppSettings } from '../types/chat'
+import { AppSettings } from '@/types/chat'
 
 const SETTINGS_KEY = 'agri:app:settings'
 
@@ -9,6 +9,7 @@ const defaults: AppSettings = {
   userId: '',
   model: 'gpt-3.5-turbo-1106',
   collectionId: '013573a2_agriculture',
+  username: '',
 }
 
 export const getAppSettings = (): AppSettings => {

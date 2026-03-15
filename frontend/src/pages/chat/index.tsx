@@ -1,6 +1,6 @@
 import { Button, Input, ScrollView, Text, View } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState} from 'react'
 import MessageBubble from '../../components/MessageBubble'
 import {
   createSession,
@@ -9,10 +9,10 @@ import {
   listMessages,
   listSessions,
   streamCompletion,
-} from '../../services/chat'
-import { getAppSettings } from '../../services/settings'
-import { ChatMessage, ChatSession } from '../../types/chat'
-import { ensureAuthed } from '../../utils/auth'
+} from '@/services/chat'
+import { getAppSettings } from '@/services/settings'
+import { ChatMessage, ChatSession } from '@/types/chat'
+import { ensureAuthed } from '@/utils/auth'
 import './index.scss'
 
 const PREFILL_KEY = 'agri:chat:prefill-question'
@@ -74,11 +74,6 @@ const ChatPage = () => {
     if (!query || loading) return
     if (!sidebarCollapsed) setSidebarCollapsed(true)
     const settings = getAppSettings()
-    if (!settings.baseUrl.trim() || !settings.token.trim() || !settings.userId.trim()) {
-      setNeedsSetup(true)
-      Taro.showToast({ title: '请先在“我的”页完善后端配置', icon: 'none' })
-      return
-    }
 
     setLoading(true)
     setInputValue('')
@@ -115,12 +110,21 @@ const ChatPage = () => {
       }
       setMessages((prev) => [...prev, tempUserMessage, tempAssistantMessage])
 
+      const history = messages.filter((item) => item.status === 1).map((item) => {
+        const { sender, content, extra } = item
+        return {
+          sender,
+          content,
+          extra,
+        }
+      }).slice(-10)
       await streamCompletion(
         {
           query,
           sessionId,
           model: settings.model,
           collectionId: settings.collectionId,
+          history,
         },
         (_delta, full) => {
           setMessages((prev) =>
@@ -139,7 +143,7 @@ const ChatPage = () => {
       await refreshMessages(sessionId)
       await refreshSessions()
     } catch (err) {
-      Taro.showToast({ title: (err as Error).message || '发送失败', icon: 'none' })
+      await Taro.showToast({ title: (err as Error).message || '发送失败', icon: 'none' })
       if (sessionId) {
         await refreshMessages(sessionId)
       }
@@ -150,7 +154,7 @@ const ChatPage = () => {
 
   const onNewSession = async () => {
     if (needsSetup) {
-      Taro.showToast({ title: '请先到“我的”页配置连接', icon: 'none' })
+      await Taro.showToast({ title: '请先到“我的”页配置连接', icon: 'none' })
       return
     }
     setSidebarCollapsed(true)
@@ -168,7 +172,7 @@ const ChatPage = () => {
       }
       await ensureSession()
     } catch (err) {
-      Taro.showToast({ title: (err as Error).message || '删除失败', icon: 'none' })
+      await Taro.showToast({ title: (err as Error).message || '删除失败', icon: 'none' })
     }
   }
 
@@ -178,8 +182,8 @@ const ChatPage = () => {
     if (!sidebarCollapsed) setSidebarCollapsed(true)
   }
 
-  useDidShow(() => {
-    if (!ensureAuthed()) return
+  useDidShow(async () => {
+    if (!await ensureAuthed()) return
     ;(async () => {
       await ensureSession()
       const prefill = Taro.getStorageSync(PREFILL_KEY)
@@ -240,7 +244,7 @@ const ChatPage = () => {
         </View>
 
         <View className='chat-panel'>
-          <ScrollView scrollY showScrollbar={false} className='message-scroll'>
+          <ScrollView scrollY showScrollbar={false} className='message-scroll' scrollWithAnimation>
             {needsSetup ? (
               <View className='welcome-card'>
                 <Text className='welcome-title'>先完成连接配置，再开始问答</Text>

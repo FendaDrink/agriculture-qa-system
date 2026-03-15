@@ -1,6 +1,6 @@
 import { Text, View } from '@tarojs/components'
 import React from 'react'
-import { ChatMessage } from '../types/chat'
+import { ChatMessage } from '@/types/chat'
 import './MessageBubble.scss'
 
 interface Props {

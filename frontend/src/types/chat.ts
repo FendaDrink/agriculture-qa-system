@@ -28,6 +28,7 @@ export interface CompletionPayload {
   model?: string
   collectionId?: string
   sessionId: string
+  history?: any
 }
 
 export interface UserProfile {
@@ -45,4 +46,5 @@ export interface AppSettings {
   userId: string
   model: string
   collectionId: string
+  username: string
 }

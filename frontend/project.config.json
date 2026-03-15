@@ -2,7 +2,7 @@
   "miniprogramRoot": "dist/",
   "projectname": "agriculture-qa-miniapp",
   "description": "农业智能问答助手",
-  "appid": "touristappid",
+  "appid": "wx21e98e05d3fbd8da",
   "setting": {
     "urlCheck": false,
     "es6": true,
