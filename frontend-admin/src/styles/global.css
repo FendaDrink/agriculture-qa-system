@@ -1,0 +1,93 @@
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial,
+    sans-serif;
+  background: linear-gradient(180deg, #f5f8f4 0%, #eef4f0 100%);
+  color: #1f2329;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+}
+
+.page-shell {
+  padding: 24px;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.collection-card {
+  border: 1px solid rgba(31, 122, 62, 0.12);
+  background: #ffffff;
+  box-shadow: 0 6px 16px rgba(31, 122, 62, 0.08);
+}
+
+.collection-card .ant-card-meta-title {
+  font-weight: 600;
+}
+
+.list-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at top, #f0f6f1 0%, #e4efe7 55%, #d7e6dd 100%);
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  border: 1px solid rgba(31, 122, 62, 0.2);
+  box-shadow: 0 12px 30px rgba(31, 122, 62, 0.12);
+}
+
+.login-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1f7a3e;
+  margin-bottom: 8px;
+}
+
+.muted {
+  color: #667085;
+}
+
+.chunk-card {
+  border: 1px solid rgba(31, 122, 62, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.chunk-card:hover {
+  border-color: rgba(31, 122, 62, 0.4);
+}
+
+.section-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}

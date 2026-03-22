@@ -1,0 +1,311 @@
+import { useState } from 'react'
+import {
+  Button,
+  Form,
+  Input,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd'
+import { PlusOutlined } from '@ant-design/icons'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import dayjs from 'dayjs'
+import type { UserDto } from '../../types/api'
+import { createUser, deleteUser, getUsers, updateUser, updateUserPassword } from '../../api/users'
+
+const roleOptions = [
+  { label: '超级管理员', value: 0 },
+  { label: '管理员', value: 1 },
+  { label: '普通用户', value: 2 },
+]
+
+const statusOptions = [
+  { label: '启用', value: 0 },
+  { label: '禁用', value: 1 },
+]
+
+const UserList: React.FC = () => {
+  const queryClient = useQueryClient()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [pwdOpen, setPwdOpen] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<UserDto | null>(null)
+
+  const [createForm] = Form.useForm()
+  const [editForm] = Form.useForm()
+  const [pwdForm] = Form.useForm()
+
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['users'],
+    queryFn: getUsers,
+  })
+
+  const createMutation = useMutation({
+    mutationFn: createUser,
+    onSuccess: () => {
+      message.success('用户创建成功')
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setCreateOpen(false)
+      createForm.resetFields()
+    },
+    onError: (error: any) => message.error(error?.message || '创建失败'),
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: updateUser,
+    onSuccess: () => {
+      message.success('用户信息已更新')
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setEditOpen(false)
+      setSelectedUser(null)
+      editForm.resetFields()
+    },
+    onError: (error: any) => message.error(error?.message || '更新失败'),
+  })
+
+  const passwordMutation = useMutation({
+    mutationFn: updateUserPassword,
+    onSuccess: () => {
+      message.success('密码已更新')
+      setPwdOpen(false)
+      setSelectedUser(null)
+      pwdForm.resetFields()
+    },
+    onError: (error: any) => message.error(error?.message || '更新失败'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteUser,
+    onSuccess: () => {
+      message.success('用户已删除')
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
+    onError: (error: any) => message.error(error?.message || '删除失败'),
+  })
+
+  const columns = [
+    {
+      title: '手机号',
+      dataIndex: 'id',
+      key: 'id',
+    },
+    {
+      title: '用户名',
+      dataIndex: 'username',
+      key: 'username',
+    },
+    {
+      title: '角色',
+      dataIndex: 'roleId',
+      key: 'roleId',
+      render: (value: number) => roleOptions.find((item) => item.value === value)?.label,
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      render: (value: number) =>
+        value === 0 ? <Tag color="green">启用</Tag> : <Tag color="red">禁用</Tag>,
+    },
+    {
+      title: '更新时间',
+      dataIndex: 'updateTime',
+      key: 'updateTime',
+      render: (value: string) => dayjs(value).format('YYYY-MM-DD HH:mm'),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      render: (_: unknown, record: UserDto) => (
+        <Space>
+          <Button
+            onClick={() => {
+              setSelectedUser(record)
+              editForm.setFieldsValue({
+                username: record.username,
+                roleId: record.roleId,
+                status: record.status,
+              })
+              setEditOpen(true)
+            }}
+          >
+            编辑
+          </Button>
+          <Button
+            onClick={() => {
+              setSelectedUser(record)
+              setPwdOpen(true)
+            }}
+          >
+            重置密码
+          </Button>
+          <Popconfirm
+            title="确认删除该用户？"
+            onConfirm={() => deleteMutation.mutate(record.id)}
+          >
+            <Button danger>删除</Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ]
+
+  return (
+    <div>
+      <div className="list-toolbar">
+        <div>
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            用户管理
+          </Typography.Title>
+          <Typography.Text className="muted">管理系统内的用户与角色</Typography.Text>
+        </div>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+          新建用户
+        </Button>
+      </div>
+
+      <Table
+          rowKey="id"
+          loading={isLoading}
+          dataSource={data}
+          columns={columns}
+      />
+
+      <Modal
+        title="新建用户"
+        open={createOpen}
+        onCancel={() => setCreateOpen(false)}
+        onOk={() => createForm.submit()}
+        okButtonProps={{ loading: createMutation.isPending }}
+      >
+        <Form
+          form={createForm}
+          layout="vertical"
+          onFinish={(values) => createMutation.mutate(values)}
+        >
+          <Form.Item
+            label="手机号"
+            name="id"
+            rules={[{ required: true, message: '请输入手机号' }]}
+          >
+            <Input placeholder="请输入手机号" />
+          </Form.Item>
+          <Form.Item
+            label="用户名"
+            name="username"
+            rules={[{ required: true, message: '请输入用户名' }]}
+          >
+            <Input placeholder="请输入用户名" />
+          </Form.Item>
+          <Form.Item
+            label="初始密码"
+            name="password"
+            rules={[{ required: true, message: '请输入初始密码' }]}
+          >
+            <Input.Password placeholder="请输入密码" />
+          </Form.Item>
+          <Form.Item
+            label="角色"
+            name="roleId"
+            rules={[{ required: true, message: '请选择角色' }]}
+          >
+            <Select options={roleOptions} placeholder="请选择角色" />
+          </Form.Item>
+          <Form.Item
+            label="状态"
+            name="status"
+            rules={[{ required: true, message: '请选择状态' }]}
+          >
+            <Select options={statusOptions} placeholder="请选择状态" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="编辑用户"
+        open={editOpen}
+        onCancel={() => {
+          setEditOpen(false)
+          setSelectedUser(null)
+        }}
+        onOk={() => editForm.submit()}
+        okButtonProps={{ loading: updateMutation.isPending }}
+      >
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={(values) => {
+            if (!selectedUser) return
+            updateMutation.mutate({
+              id: selectedUser.id,
+              ...values,
+            })
+          }}
+        >
+          <Form.Item label="手机号">
+            <Input value={selectedUser?.id} disabled />
+          </Form.Item>
+          <Form.Item
+            label="用户名"
+            name="username"
+            rules={[{ required: true, message: '请输入用户名' }]}
+          >
+            <Input placeholder="请输入用户名" />
+          </Form.Item>
+          <Form.Item
+            label="角色"
+            name="roleId"
+            rules={[{ required: true, message: '请选择角色' }]}
+          >
+            <Select options={roleOptions} placeholder="请选择角色" />
+          </Form.Item>
+          <Form.Item
+            label="状态"
+            name="status"
+            rules={[{ required: true, message: '请选择状态' }]}
+          >
+            <Select options={statusOptions} placeholder="请选择状态" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="重置密码"
+        open={pwdOpen}
+        onCancel={() => {
+          setPwdOpen(false)
+          setSelectedUser(null)
+        }}
+        onOk={() => pwdForm.submit()}
+        okButtonProps={{ loading: passwordMutation.isPending }}
+      >
+        <Form
+          form={pwdForm}
+          layout="vertical"
+          onFinish={(values) => {
+            if (!selectedUser) return
+            passwordMutation.mutate({ userId: selectedUser.id, password: values.password })
+          }}
+        >
+          <Form.Item label="手机号">
+            <Input value={selectedUser?.id} disabled />
+          </Form.Item>
+          <Form.Item
+            label="新密码"
+            name="password"
+            rules={[{ required: true, message: '请输入新密码' }]}
+          >
+            <Input.Password placeholder="请输入新密码" />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  )
+}
+
+export default UserList

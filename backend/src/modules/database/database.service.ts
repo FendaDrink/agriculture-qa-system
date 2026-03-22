@@ -8,6 +8,7 @@ import { createCollectionDto } from './dto/createCollection.dto'
 import { v4 as uuidV4 } from 'uuid'
 import { UpdateCollectionDto } from './dto/updateCollection.dto'
 import { ExternalApiService } from '../../common/api/externalApi.service'
+import { RecallDto } from './dto/recall.dto'
 
 @Injectable()
 export class DatabaseService {
@@ -93,5 +94,23 @@ export class DatabaseService {
         throw new HttpException('删除失败，请稍后再试', HttpStatus.NOT_IMPLEMENTED)
       }
     })
+  }
+
+  /**
+   * 召回分段
+   */
+  async recallChunks(user: { userId: string; roleId: number }, payload: RecallDto): Promise<any> {
+    const collections = await this.collectionDAO.findCollectionByConditions({
+      id: payload.collectionId,
+    })
+    if (!collections || !collections.length) {
+      throw new HttpException('该向量库不存在', HttpStatus.NOT_FOUND)
+    }
+
+    if (user.roleId === 2 && collections[0].createBy !== user.userId) {
+      throw new HttpException('无权限访问该向量库', HttpStatus.FORBIDDEN)
+    }
+
+    return this.externalApiService.recall(payload)
   }
 }
