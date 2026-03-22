@@ -9,6 +9,7 @@ import { UpdateChunkDto } from '../../modules/database/chunk/dto/updateChunk.dto
 import { DeleteChunkDto } from '../../modules/database/chunk/dto/deleteChunk.dto'
 import { SpeechResDto } from '../../modules/chat/dto/speechRes.dto'
 import { CompletionDto } from '../../modules/chat/dto/completion.dto'
+import { RecallDto } from '../../modules/database/dto/recall.dto'
 
 @Injectable()
 export class ExternalApiService {
@@ -137,16 +138,31 @@ export class ExternalApiService {
   // Base 服务聊天
   async completion(completionData: CompletionDto): Promise<any> {
     const url = '/completion'
+    const { query, model, collectionId: collection_id, history: chat_history } = completionData
     const response = await this.httpService.axiosRef.post(
       url,
       {
-        query: completionData.query,
-        model: completionData.model,
-        collection_id: completionData.collectionId,
+        query,
+        model,
+        collection_id,
+        chat_history,
       },
       {
         responseType: 'stream',
       },
+    )
+    return response.data
+  }
+
+  // Base 服务召回分段
+  async recall(recallData: RecallDto): Promise<any> {
+    const url = '/recall'
+    const response = await lastValueFrom(
+      this.httpService.post(url, {
+        query: recallData.query,
+        collection_id: recallData.collectionId,
+        top_n: recallData.topN ?? 10,
+      }),
     )
     return response.data
   }

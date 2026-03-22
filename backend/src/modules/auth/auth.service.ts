@@ -29,15 +29,14 @@ export class AuthService {
     }
     const hash = userPwd.pwdHash
     const password = loginDto.password
-    const bool = this.encryptionService.comparePassword(password, hash)
-
+    const bool = await this.encryptionService.comparePassword(password, hash)
     // 2. 密码校验
     if (!bool) {
-      throw new HttpException('密码错误', HttpStatus.UNAUTHORIZED)
+      throw new HttpException('密码错误，请重新输入', HttpStatus.UNAUTHORIZED)
     }
 
     // 3. 组装 payload
-    const payload = { userId: userPwd.userId, roleId: userInfo.roleId }
+    const payload = { userId: userPwd.userId, roleId: userInfo.roleId, username: userInfo.username }
 
     return {
       token: this.jwtService.sign(payload),

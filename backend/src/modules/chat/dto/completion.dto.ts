@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator'
+import { IsArray, IsNotEmpty, IsOptional, IsString } from 'class-validator'
 
 export class CompletionDto {
   @IsString()
@@ -16,4 +16,8 @@ export class CompletionDto {
   @IsString()
   @IsNotEmpty()
   sessionId: string
+
+  @IsArray()
+  @IsOptional()
+  history?: any
 }

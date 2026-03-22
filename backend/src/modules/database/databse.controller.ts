@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common'
 import { LogRequestMiddleware } from '../../app.middleware'
@@ -17,6 +18,7 @@ import { SearchCollectionDto } from './dto/searchCollection.dto'
 import { createCollectionDto } from './dto/createCollection.dto'
 import { CollectionDAO } from './dao/collection.dao'
 import { UpdateCollectionDto } from './dto/updateCollection.dto'
+import { RecallDto } from './dto/recall.dto'
 
 @Controller('database')
 export class DatabaseController {
@@ -71,5 +73,14 @@ export class DatabaseController {
   @UseGuards(AuthGuard)
   async deleteCollection(@Query('collectionId') id: string): Promise<void> {
     return this.databaseService.deleteCollection(id)
+  }
+
+  /**
+   * 召回分段
+   */
+  @Post('/recall')
+  @UseGuards(AuthGuard)
+  async recallChunks(@Body() data: RecallDto, @Req() req: any): Promise<any> {
+    return this.databaseService.recallChunks(req.user, data)
   }
 }

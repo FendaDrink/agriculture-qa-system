@@ -1,0 +1,35 @@
+.message-row {
+  display: flex;
+  margin: 14px 0;
+}
+
+.message-row.is-user {
+  justify-content: flex-end;
+}
+
+.message-row.is-assistant {
+  justify-content: flex-start;
+}
+
+.message-bubble {
+  max-width: 84%;
+  padding: 16px 18px;
+  border-radius: 16px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 24px;
+}
+
+.message-bubble.user {
+  background: linear-gradient(145deg, #0f7449, #0f6040);
+  color: #fff;
+  border-bottom-right-radius: 6px;
+}
+
+.message-bubble.assistant {
+  background: #fbfdfb;
+  color: #243d31;
+  border: 1px solid #d6e7dc;
+  border-bottom-left-radius: 6px;
+}
