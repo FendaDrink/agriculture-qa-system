@@ -1,17 +1,20 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
+  Drawer,
   Form,
   Input,
   Modal,
   Popconfirm,
+  Progress,
   Space,
+  Spin,
   Table,
   Typography,
   Upload,
   message,
 } from 'antd'
-import { ArrowLeftOutlined, FileTextOutlined, UploadOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, EyeOutlined, FileTextOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
@@ -19,6 +22,8 @@ import type { RcFile } from 'antd/es/upload'
 import { deleteDocument, getDocumentsByCollection, updateDocument, uploadDocument } from '../../api/documents'
 import type { DocumentDto } from '../../types/api'
 import { useAuth } from '../../hooks/useAuth'
+import PageHeader from '../../components/PageHeader'
+import { fetchDocumentPdf } from '../../api/files'
 
 interface LocationState {
   collectionName?: string
@@ -34,6 +39,13 @@ const DocumentList: React.FC = () => {
   const [selectedDoc, setSelectedDoc] = useState<DocumentDto | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [uploadPercent, setUploadPercent] = useState(0)
+  const [keyword, setKeyword] = useState('')
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewTitle, setPreviewTitle] = useState<string>('')
+  const [previewUrl, setPreviewUrl] = useState<string>('')
+  const previewUrlRef = useRef<string>('')
   const [form] = Form.useForm()
   const [uploadForm] = Form.useForm()
 
@@ -54,6 +66,14 @@ const DocumentList: React.FC = () => {
           fileName: payload.fileName,
         },
         payload.file,
+        {
+          onUploadProgress: (evt) => {
+            const total = (evt as any)?.total as number | undefined
+            const loaded = (evt as any)?.loaded as number | undefined
+            if (!total || !loaded) return
+            setUploadPercent(Math.min(100, Math.round((loaded / total) * 100)))
+          },
+        },
       ),
     onSuccess: () => {
       message.success('文件上传成功')
@@ -83,11 +103,54 @@ const DocumentList: React.FC = () => {
     onError: (error: any) => message.error(error?.message || '删除失败'),
   })
 
-  const openRename = (doc: DocumentDto) => {
+  const filteredDocs = useMemo(() => {
+    const normalized = keyword.trim().toLowerCase()
+    const list = normalized
+      ? data.filter((item) => {
+          return (
+            item.fileName.toLowerCase().includes(normalized) ||
+            item.createBy.toLowerCase().includes(normalized) ||
+            item.id.toLowerCase().includes(normalized)
+          )
+        })
+      : data
+    return [...list].sort((a, b) => dayjs(b.updateTime).valueOf() - dayjs(a.updateTime).valueOf())
+  }, [data, keyword])
+
+  const openRename = useCallback((doc: DocumentDto) => {
     setSelectedDoc(doc)
     form.setFieldsValue({ fileName: doc.fileName })
     setRenameOpen(true)
-  }
+  }, [form])
+
+  const openPreview = useCallback(async (doc: DocumentDto) => {
+    setPreviewTitle(doc.fileName || 'PDF 预览')
+    setPreviewOpen(true)
+    setPreviewLoading(true)
+    try {
+      const blob = await fetchDocumentPdf(doc.id)
+      const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }))
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current)
+      }
+      previewUrlRef.current = url
+      setPreviewUrl(url)
+    } catch (error: any) {
+      message.error(error?.message || '获取 PDF 失败')
+      setPreviewOpen(false)
+    } finally {
+      setPreviewLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current)
+        previewUrlRef.current = ''
+      }
+    }
+  }, [])
 
   const handleBeforeUpload = (file: RcFile) => {
     if (!user) {
@@ -104,6 +167,7 @@ const DocumentList: React.FC = () => {
     }
     setPendingFile(file)
     uploadForm.setFieldsValue({ fileName: file.name })
+    setUploadPercent(0)
     setUploadOpen(true)
     return false
   }
@@ -114,6 +178,7 @@ const DocumentList: React.FC = () => {
       await uploadMutation.mutateAsync({ file: pendingFile, fileName: values.fileName })
       setUploadOpen(false)
       setPendingFile(null)
+      setUploadPercent(0)
       uploadForm.resetFields()
     } catch (error) {
       // error message handled by mutation
@@ -149,9 +214,12 @@ const DocumentList: React.FC = () => {
       {
         title: '操作',
         key: 'actions',
-        width: 280,
+        width: 360,
         render: (_: unknown, record: DocumentDto) => (
           <Space>
+            <Button icon={<EyeOutlined />} onClick={() => openPreview(record)}>
+              预览
+            </Button>
             <Button onClick={() => openRename(record)}>重命名</Button>
             <Button
               onClick={() =>
@@ -175,44 +243,67 @@ const DocumentList: React.FC = () => {
         ),
       },
     ]
-  }, [deleteMutation])
+  }, [
+    deleteMutation,
+    navigate,
+    openPreview,
+    openRename,
+    safeCollectionId,
+    state?.collectionName,
+  ])
 
   return (
     <div>
-      <div className="list-toolbar">
-        <Space direction="vertical" size={4}>
-          <Space>
+      <PageHeader
+        title={state?.collectionName || '向量库文件'}
+        subtitle="管理该向量库下的文件与分段"
+        breadcrumb={[{ title: '向量库' }, { title: state?.collectionName || '文件' }]}
+        extra={
+          <Space wrap>
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/collections')}>
               返回向量库
             </Button>
-            <Typography.Title level={4} style={{ margin: 0 }}>
-              {state?.collectionName || '向量库文件'}
-            </Typography.Title>
+            <Input.Search
+              allowClear
+              placeholder="搜索文件名 / ID / 创建人"
+              style={{ width: 260 }}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+            />
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['documents', safeCollectionId] })}
+              disabled={!safeCollectionId}
+            >
+              刷新
+            </Button>
+            <Upload
+              showUploadList={false}
+              beforeUpload={handleBeforeUpload}
+              accept="application/pdf"
+            >
+              <Button
+                type="primary"
+                icon={<UploadOutlined />}
+                loading={uploadMutation.isPending}
+                disabled={!safeCollectionId}
+              >
+                上传 PDF
+              </Button>
+            </Upload>
           </Space>
-          <Typography.Text className="muted">管理该向量库下的文件与分段</Typography.Text>
-        </Space>
-        <Upload
-          showUploadList={false}
-          beforeUpload={handleBeforeUpload}
-          accept="application/pdf"
-        >
-          <Button
-            type="primary"
-            icon={<UploadOutlined />}
-            loading={uploadMutation.isPending}
-            disabled={!safeCollectionId}
-          >
-            上传 PDF
-          </Button>
-        </Upload>
-      </div>
+        }
+      />
+
+      <Typography.Text className="muted">共 {filteredDocs.length} 个文件</Typography.Text>
 
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={data}
+        dataSource={filteredDocs}
         columns={columns}
-        pagination={{ pageSize: 8 }}
+        size="middle"
+        pagination={{ pageSize: 8, showSizeChanger: true }}
       />
 
       <Modal
@@ -254,6 +345,7 @@ const DocumentList: React.FC = () => {
         onCancel={() => {
           setUploadOpen(false)
           setPendingFile(null)
+          setUploadPercent(0)
           uploadForm.resetFields()
         }}
         onOk={() => uploadForm.submit()}
@@ -267,8 +359,46 @@ const DocumentList: React.FC = () => {
           >
             <Input placeholder="请输入文件名称" />
           </Form.Item>
+          {uploadMutation.isPending ? (
+            <div style={{ marginTop: 12 }}>
+              <Typography.Text className="muted">上传进度</Typography.Text>
+              <Progress percent={uploadPercent} size="small" />
+            </div>
+          ) : null}
         </Form>
       </Modal>
+
+      <Drawer
+        title={previewTitle || 'PDF 预览'}
+        placement="right"
+        width={920}
+        open={previewOpen}
+        onClose={() => {
+          setPreviewOpen(false)
+          setPreviewLoading(false)
+          setPreviewTitle('')
+          setPreviewUrl('')
+          if (previewUrlRef.current) {
+            URL.revokeObjectURL(previewUrlRef.current)
+            previewUrlRef.current = ''
+          }
+        }}
+        destroyOnClose
+      >
+        {previewLoading ? (
+          <div style={{ height: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Spin />
+          </div>
+        ) : previewUrl ? (
+          <iframe
+            title="pdf-preview"
+            src={previewUrl}
+            style={{ width: '100%', height: '80vh', border: 'none', borderRadius: 8 }}
+          />
+        ) : (
+          <Typography.Text className="muted">暂无预览内容</Typography.Text>
+        )}
+      </Drawer>
 
     </div>
   )

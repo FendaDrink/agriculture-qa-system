@@ -1,10 +1,12 @@
 import { useMemo } from 'react'
-import { Button, Card, Form, Input, List, Select, Space, Typography, message } from 'antd'
-import { SearchOutlined } from '@ant-design/icons'
+import { Button, Card, Form, Input, InputNumber, List, Select, Space, Typography, message } from 'antd'
+import { ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { getCollections, searchCollections } from '../api/collections'
 import { recallChunks } from '../api/recall'
 import { useAuth } from '../hooks/useAuth'
+import CopyButton from '../components/CopyButton'
+import PageHeader from '../components/PageHeader'
 
 const Recall: React.FC = () => {
   const { user } = useAuth()
@@ -36,14 +38,21 @@ const Recall: React.FC = () => {
 
   return (
     <div>
-      <div className="list-toolbar">
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            召回
-          </Typography.Title>
-          <Typography.Text className="muted">选择知识库并召回最匹配的分段</Typography.Text>
-        </div>
-      </div>
+      <PageHeader
+        title="召回"
+        subtitle="选择知识库并召回最匹配的分段"
+        extra={
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => {
+              recallMutation.reset()
+              form.resetFields()
+            }}
+          >
+            重置页面
+          </Button>
+        }
+      />
 
       <Card style={{ marginBottom: 24 }}>
         <Form
@@ -53,9 +62,10 @@ const Recall: React.FC = () => {
             recallMutation.mutate({
               collectionId: values.collectionId,
               query: values.query,
-              topN: 10,
+              topN: values.topN,
             })
           }
+          initialValues={{ topN: 10 }}
         >
           <Form.Item
             label="知识库"
@@ -75,6 +85,9 @@ const Recall: React.FC = () => {
             rules={[{ required: true, message: '请输入问题' }]}
           >
             <Input.TextArea rows={3} placeholder="请输入要召回的问题" />
+          </Form.Item>
+          <Form.Item label="召回数量" name="topN">
+            <InputNumber min={1} max={50} style={{ width: 160 }} />
           </Form.Item>
           <Space>
             <Button
@@ -96,9 +109,14 @@ const Recall: React.FC = () => {
         </Form>
       </Card>
 
+      <Typography.Text className="muted">
+        {recallMutation.isSuccess ? `共召回 ${items.length} 条结果` : '尚未召回'}
+      </Typography.Text>
+
       <List
+        className="fixed-card-list"
         loading={recallMutation.isPending}
-        grid={{ gutter: 16, column: 2 }}
+        grid={{ gutter: 16, xs: 1, sm: 1, md: 2, lg: 2, xl: 2 }}
         dataSource={items}
         locale={{ emptyText: recallMutation.isSuccess ? '没有召回结果' : '请先发起召回' }}
         renderItem={(item, index) => (
@@ -107,9 +125,15 @@ const Recall: React.FC = () => {
               className="chunk-card"
               title={`#${index + 1} · ${item.id.slice(0, 8)}`}
               extra={
-                item.score !== undefined ? (
-                  <Typography.Text className="muted">匹配度: {item.score.toFixed(4)}</Typography.Text>
-                ) : null
+                <Space size={8}>
+                  {item.score !== undefined ? (
+                    <Typography.Text className="muted">匹配度: {item.score.toFixed(4)}</Typography.Text>
+                  ) : null}
+                  {item.distance !== undefined ? (
+                    <Typography.Text className="muted">距离: {item.distance.toFixed(4)}</Typography.Text>
+                  ) : null}
+                  <CopyButton text={item.content} label="" />
+                </Space>
               }
             >
               <Typography.Paragraph ellipsis={{ rows: 5 }}>{item.content}</Typography.Paragraph>

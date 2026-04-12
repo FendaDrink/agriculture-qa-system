@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Button, Card, Form, Input, List, Modal, Popconfirm, Space, Typography, message } from 'antd'
-import { ArrowLeftOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { addChunk, deleteChunk, getChunks, updateChunk } from '../../api/chunks'
 import type { ChunkDetailDto } from '../../types/api'
 import { useAuth } from '../../hooks/useAuth'
+import CopyButton from '../../components/CopyButton'
+import PageHeader from '../../components/PageHeader'
 
 interface LocationState {
   collectionName?: string
@@ -22,6 +24,7 @@ const ChunkList: React.FC = () => {
 
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<ChunkDetailDto | null>(null)
+  const [keyword, setKeyword] = useState('')
   const [form] = Form.useForm()
 
   const safeCollectionId = collectionId || ''
@@ -34,6 +37,20 @@ const ChunkList: React.FC = () => {
     queryFn: () => getChunks(safeDocumentId),
     enabled: !!safeDocumentId,
   })
+
+  const filteredChunks = useMemo(() => {
+    const normalized = keyword.trim().toLowerCase()
+    const list = normalized
+      ? data.filter((item) => {
+          return (
+            item.content.toLowerCase().includes(normalized) ||
+            item.id.toLowerCase().includes(normalized) ||
+            item.createBy.toLowerCase().includes(normalized)
+          )
+        })
+      : data
+    return [...list].sort((a, b) => dayjs(b.updateTime).valueOf() - dayjs(a.updateTime).valueOf())
+  }, [data, keyword])
 
   const addMutation = useMutation({
     mutationFn: addChunk,
@@ -102,31 +119,54 @@ const ChunkList: React.FC = () => {
 
   return (
     <div>
-      <div className="list-toolbar">
-        <Space direction="vertical" size={4}>
-          <Space>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/collections/${safeCollectionId}/documents`, {
-              state: { collectionName: state?.collectionName },
-            })}>
+      <PageHeader
+        title="分段管理"
+        subtitle={state?.documentName ? `${state.documentName} · 分段列表` : '管理该文件的分段内容'}
+        breadcrumb={[
+          { title: '向量库' },
+          { title: state?.collectionName || '文件' },
+          { title: state?.documentName || '分段' },
+        ]}
+        extra={
+          <Space wrap>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={() =>
+                navigate(`/collections/${safeCollectionId}/documents`, {
+                  state: { collectionName: state?.collectionName },
+                })
+              }
+            >
               返回文件列表
             </Button>
-            <Typography.Title level={4} style={{ margin: 0 }}>
-              分段管理
-            </Typography.Title>
+            <Input.Search
+              allowClear
+              placeholder="搜索内容 / ID / 创建人"
+              style={{ width: 260 }}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+            />
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => queryClient.invalidateQueries({ queryKey })}
+              disabled={!safeDocumentId}
+            >
+              刷新
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>
+              新增分段
+            </Button>
           </Space>
-          <Typography.Text className="muted">
-            {state?.documentName ? `${state.documentName} · 分段列表` : '管理该文件的分段内容'}
-          </Typography.Text>
-        </Space>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>
-          新增分段
-        </Button>
-      </div>
+        }
+      />
+
+      <Typography.Text className="muted">共 {filteredChunks.length} 个分段</Typography.Text>
 
       <List
+        className="fixed-card-list"
         loading={isLoading}
-        grid={{ gutter: 16, column: 2 }}
-        dataSource={data}
+        grid={{ gutter: 16, xs: 1, sm: 1, md: 2, lg: 2, xl: 2 }}
+        dataSource={filteredChunks}
         locale={{ emptyText: '暂无分段' }}
         renderItem={(item) => (
           <List.Item>
@@ -137,25 +177,28 @@ const ChunkList: React.FC = () => {
               onClick={() => openEdit(item)}
               title={<span className="muted">{item.id.slice(0, 8)}</span>}
               extra={
-                <Popconfirm
-                  title="确认删除该分段？"
-                  onConfirm={(e) => {
-                    e?.stopPropagation()
-                    deleteMutation.mutate({
-                      id: item.id,
-                      collectionId: safeCollectionId,
-                      documentId: safeDocumentId,
-                    })
-                  }}
-                  onCancel={(e) => e?.stopPropagation()}
-                >
-                  <Button
-                    size="small"
-                    type="text"
-                    icon={<DeleteOutlined />}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </Popconfirm>
+                <Space size={2}>
+                  <CopyButton text={item.content} label="" />
+                  <Popconfirm
+                    title="确认删除该分段？"
+                    onConfirm={(e) => {
+                      e?.stopPropagation()
+                      deleteMutation.mutate({
+                        id: item.id,
+                        collectionId: safeCollectionId,
+                        documentId: safeDocumentId,
+                      })
+                    }}
+                    onCancel={(e) => e?.stopPropagation()}
+                  >
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<DeleteOutlined />}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </Popconfirm>
+                </Space>
               }
             >
               <Typography.Paragraph ellipsis={{ rows: 4 }} style={{ marginBottom: 8 }}>
@@ -164,6 +207,11 @@ const ChunkList: React.FC = () => {
               <Typography.Text className="muted">
                 更新时间：{dayjs(item.updateTime).format('YYYY-MM-DD HH:mm')}
               </Typography.Text>
+              <div style={{ marginTop: 6 }}>
+                <Typography.Text className="muted">
+                  创建人：{item.createBy} · 创建时间：{dayjs(item.createTime).format('YYYY-MM-DD HH:mm')}
+                </Typography.Text>
+              </div>
             </Card>
           </List.Item>
         )}

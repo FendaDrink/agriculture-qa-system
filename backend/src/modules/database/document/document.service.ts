@@ -6,6 +6,7 @@ import { SearchDocDto } from './dto/searchDoc.dto'
 import { UpdateDocDto } from './dto/updateDocDto.dto'
 import { ExternalApiService } from '../../../common/api/externalApi.service'
 import { UploadDocDto } from './dto/uploadDocDto.dto'
+import type { Readable } from 'stream'
 
 @Injectable()
 export class DocumentService {
@@ -103,5 +104,41 @@ export class DocumentService {
         throw new HttpException('删除失败，请稍后再试', HttpStatus.NOT_IMPLEMENTED)
       }
     })
+  }
+
+  /**
+   * 获取 PDF 文件流（用于前端预览/下载）
+   */
+  async getDocumentFileStream(documentId: string): Promise<{
+    stream: Readable
+    fileName: string
+    contentType: string
+    contentLength?: string
+  }> {
+    if (!documentId) {
+      throw new BadRequestException('缺少必要参数')
+    }
+
+    const docs = await this.documentDAO.findDocumentByConditions({ id: documentId })
+    if (!docs || docs.length === 0) {
+      throw new HttpException('该文档不存在', HttpStatus.NOT_FOUND)
+    }
+
+    const doc = docs[0]
+    try {
+      const response = await this.externalApiService.downloadDocument(doc.collectionId, doc.fileHash)
+      return {
+        stream: response.data as Readable,
+        fileName: doc.fileName,
+        contentType: (response.headers?.['content-type'] as string) || 'application/pdf',
+        contentLength: response.headers?.['content-length'] as string | undefined,
+      }
+    } catch (error: any) {
+      const status = error?.response?.status
+      if (status === 404) {
+        throw new HttpException('源文件不存在', HttpStatus.NOT_FOUND)
+      }
+      throw new HttpException('获取源文件失败，请稍后再试', HttpStatus.BAD_GATEWAY)
+    }
   }
 }

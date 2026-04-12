@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Button,
   Form,
@@ -12,11 +12,12 @@ import {
   Typography,
   message,
 } from 'antd'
-import { PlusOutlined } from '@ant-design/icons'
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import type { UserDto } from '../../types/api'
 import { createUser, deleteUser, getUsers, updateUser, updateUserPassword } from '../../api/users'
+import PageHeader from '../../components/PageHeader'
 
 const roleOptions = [
   { label: '超级管理员', value: 0 },
@@ -35,6 +36,9 @@ const UserList: React.FC = () => {
   const [editOpen, setEditOpen] = useState(false)
   const [pwdOpen, setPwdOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<UserDto | null>(null)
+  const [keyword, setKeyword] = useState('')
+  const [roleId, setRoleId] = useState<number | undefined>(undefined)
+  const [status, setStatus] = useState<number | undefined>(undefined)
 
   const [createForm] = Form.useForm()
   const [editForm] = Form.useForm()
@@ -44,6 +48,16 @@ const UserList: React.FC = () => {
     queryKey: ['users'],
     queryFn: getUsers,
   })
+
+  const filteredUsers = useMemo(() => {
+    const normalized = keyword.trim().toLowerCase()
+    const list = normalized
+      ? data.filter((u) => u.id.toLowerCase().includes(normalized) || u.username.toLowerCase().includes(normalized))
+      : data
+    const byRole = roleId === undefined ? list : list.filter((u) => u.roleId === roleId)
+    const byStatus = status === undefined ? byRole : byRole.filter((u) => u.status === status)
+    return [...byStatus].sort((a, b) => dayjs(b.updateTime).valueOf() - dayjs(a.updateTime).valueOf())
+  }, [data, keyword, roleId, status])
 
   const createMutation = useMutation({
     mutationFn: createUser,
@@ -157,23 +171,53 @@ const UserList: React.FC = () => {
 
   return (
     <div>
-      <div className="list-toolbar">
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            用户管理
-          </Typography.Title>
-          <Typography.Text className="muted">管理系统内的用户与角色</Typography.Text>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          新建用户
-        </Button>
-      </div>
+      <PageHeader
+        title="用户管理"
+        subtitle="管理系统内的用户与角色"
+        extra={
+          <Space wrap>
+            <Input.Search
+              allowClear
+              placeholder="搜索手机号 / 用户名"
+              style={{ width: 240 }}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+            />
+            <Select
+              allowClear
+              placeholder="角色"
+              style={{ width: 160 }}
+              options={roleOptions}
+              value={roleId}
+              onChange={(v) => setRoleId(v)}
+            />
+            <Select
+              allowClear
+              placeholder="状态"
+              style={{ width: 140 }}
+              options={statusOptions}
+              value={status}
+              onChange={(v) => setStatus(v)}
+            />
+            <Button icon={<ReloadOutlined />} onClick={() => queryClient.invalidateQueries({ queryKey: ['users'] })}>
+              刷新
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+              新建用户
+            </Button>
+          </Space>
+        }
+      />
+
+      <Typography.Text className="muted">共 {filteredUsers.length} 个用户</Typography.Text>
 
       <Table
           rowKey="id"
           loading={isLoading}
-          dataSource={data}
+          dataSource={filteredUsers}
           columns={columns}
+          size="middle"
+          pagination={{ pageSize: 10, showSizeChanger: true }}
       />
 
       <Modal
@@ -191,7 +235,10 @@ const UserList: React.FC = () => {
           <Form.Item
             label="手机号"
             name="id"
-            rules={[{ required: true, message: '请输入手机号' }]}
+            rules={[
+              { required: true, message: '请输入手机号' },
+              { pattern: /^1\d{10}$/, message: '请输入正确的手机号' },
+            ]}
           >
             <Input placeholder="请输入手机号" />
           </Form.Item>
@@ -205,7 +252,10 @@ const UserList: React.FC = () => {
           <Form.Item
             label="初始密码"
             name="password"
-            rules={[{ required: true, message: '请输入初始密码' }]}
+            rules={[
+              { required: true, message: '请输入初始密码' },
+              { min: 6, message: '密码至少 6 位' },
+            ]}
           >
             <Input.Password placeholder="请输入密码" />
           </Form.Item>
@@ -298,7 +348,10 @@ const UserList: React.FC = () => {
           <Form.Item
             label="新密码"
             name="password"
-            rules={[{ required: true, message: '请输入新密码' }]}
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 6, message: '密码至少 6 位' },
+            ]}
           >
             <Input.Password placeholder="请输入新密码" />
           </Form.Item>

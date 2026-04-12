@@ -10,6 +10,7 @@ import { DeleteChunkDto } from '../../modules/database/chunk/dto/deleteChunk.dto
 import { SpeechResDto } from '../../modules/chat/dto/speechRes.dto'
 import { CompletionDto } from '../../modules/chat/dto/completion.dto'
 import { RecallDto } from '../../modules/database/dto/recall.dto'
+import type { AxiosResponse } from 'axios'
 
 @Injectable()
 export class ExternalApiService {
@@ -165,5 +166,17 @@ export class ExternalApiService {
       }),
     )
     return response.data
+  }
+
+  // Base 服务下载文档（PDF）接口：返回可读流
+  async downloadDocument(collectionId: string, fileHash: string): Promise<AxiosResponse<any>> {
+    const url = '/download_document'
+    return this.httpService.axiosRef.get(url, {
+      params: {
+        collection_id: collectionId,
+        file_hash: fileHash,
+      },
+      responseType: 'stream',
+    })
   }
 }

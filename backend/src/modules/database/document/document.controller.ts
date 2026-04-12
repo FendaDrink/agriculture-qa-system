@@ -10,6 +10,7 @@ import {
   UseGuards,
   UploadedFile,
   UseInterceptors,
+  Res,
 } from '@nestjs/common'
 import { DocumentService } from './document.service'
 import { LogRequestMiddleware } from '../../../app.middleware'
@@ -19,6 +20,7 @@ import { SearchDocDto } from './dto/searchDoc.dto'
 import { UpdateDocDto } from './dto/updateDocDto.dto'
 import { UploadDocDto } from './dto/uploadDocDto.dto'
 import { FileInterceptor } from '@nestjs/platform-express'
+import type { Response } from 'express'
 
 @Controller('database/document')
 export class DocumentController {
@@ -75,5 +77,39 @@ export class DocumentController {
   @UseGuards(AuthGuard)
   async deleteDocument(@Query('id') id: string): Promise<void> {
     return this.documentService.deleteDoc(id)
+  }
+
+  /**
+   * 预览/下载源 PDF 文件
+   * 注意：此接口返回二进制流，不走统一 JSON 包装
+   */
+  @Get('/file')
+  @UseGuards(AuthGuard)
+  async getDocumentFile(@Query('id') id: string, @Res() res: Response): Promise<void> {
+    const { stream, fileName, contentType, contentLength } =
+      await this.documentService.getDocumentFileStream(id)
+
+    const originalName = (fileName || 'document.pdf').toString()
+    // `filename="..."` must be ASCII for Node's header validation; use RFC 5987 `filename*` for UTF-8.
+    let asciiFallback = originalName
+      .replace(/["\\\r\n]/g, '_')
+      .replace(/[^\x20-\x7E]/g, '_')
+      .trim()
+    if (!asciiFallback) asciiFallback = 'document.pdf'
+    if (!asciiFallback.toLowerCase().endsWith('.pdf')) asciiFallback = `${asciiFallback}.pdf`
+    const encoded = encodeURIComponent(originalName)
+
+    res.setHeader('Content-Type', contentType || 'application/pdf')
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`,
+    )
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Cache-Control', 'no-store')
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength)
+    }
+
+    stream.pipe(res)
   }
 }

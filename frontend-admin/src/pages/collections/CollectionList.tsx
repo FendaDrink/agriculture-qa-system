@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Button, Card, Form, Input, Modal, Popconfirm, Space, Typography, message } from 'antd'
-import { PlusOutlined } from '@ant-design/icons'
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { useNavigate } from 'react-router-dom'
@@ -13,6 +13,7 @@ import {
 } from '../../api/collections'
 import type { CollectionDto } from '../../types/api'
 import { useAuth } from '../../hooks/useAuth'
+import PageHeader from '../../components/PageHeader'
 
 const CollectionList: React.FC = () => {
   const { user } = useAuth()
@@ -20,6 +21,7 @@ const CollectionList: React.FC = () => {
   const queryClient = useQueryClient()
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<CollectionDto | null>(null)
+  const [keyword, setKeyword] = useState('')
   const [form] = Form.useForm()
 
   const isAdmin = useMemo(() => user?.roleId === 0 || user?.roleId === 1, [user])
@@ -33,6 +35,20 @@ const CollectionList: React.FC = () => {
     },
     enabled: !!user,
   })
+
+  const filtered = useMemo(() => {
+    const normalized = keyword.trim().toLowerCase()
+    const list = normalized
+      ? data.filter((item) => {
+          return (
+            item.collectionName.toLowerCase().includes(normalized) ||
+            item.id.toLowerCase().includes(normalized) ||
+            item.createBy.toLowerCase().includes(normalized)
+          )
+        })
+      : data
+    return [...list].sort((a, b) => dayjs(b.updateTime).valueOf() - dayjs(a.updateTime).valueOf())
+  }, [data, keyword])
 
   const createMutation = useMutation({
     mutationFn: createCollection,
@@ -96,22 +112,35 @@ const CollectionList: React.FC = () => {
 
   return (
     <div>
-      <div className="list-toolbar">
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            向量库管理
-          </Typography.Title>
-          <Typography.Text className="muted">
-            {isAdmin ? '查看全部向量库' : '仅展示你创建的向量库'}
-          </Typography.Text>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          新建向量库
-        </Button>
-      </div>
+      <PageHeader
+        title="向量库管理"
+        subtitle={isAdmin ? '查看全部向量库' : '仅展示你创建的向量库'}
+        extra={
+          <Space wrap>
+            <Input.Search
+              allowClear
+              placeholder="搜索名称 / ID / 创建人"
+              style={{ width: 260 }}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+            />
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['collections'] })}
+            >
+              刷新
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              新建向量库
+            </Button>
+          </Space>
+        }
+      />
+
+      <Typography.Text className="muted">共 {filtered.length} 个向量库</Typography.Text>
 
       <div className="card-grid">
-        {data.map((collection) => (
+        {filtered.map((collection) => (
           <Card
             key={collection.id}
             className="collection-card"
@@ -164,8 +193,10 @@ const CollectionList: React.FC = () => {
         </Form>
       </Modal>
 
-      {!isLoading && data.length === 0 && (
-        <Typography.Paragraph className="muted">暂无向量库，请先创建。</Typography.Paragraph>
+      {!isLoading && filtered.length === 0 && (
+        <Typography.Paragraph className="muted" style={{ marginTop: 12 }}>
+          暂无向量库，请先创建。
+        </Typography.Paragraph>
       )}
     </div>
   )

@@ -1,7 +1,15 @@
-import { Layout, Menu, Button, Dropdown, Typography } from 'antd'
-import { DatabaseOutlined, LogoutOutlined, SearchOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons'
+import { Layout, Menu, Button, Dropdown, Typography, Space, Tag } from 'antd'
+import {
+  DatabaseOutlined,
+  LogoutOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  SearchOutlined,
+  TeamOutlined,
+  UserOutlined,
+} from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 
 const { Header, Sider, Content } = Layout
@@ -10,6 +18,7 @@ const MainLayout: React.FC = () => {
   const { user, logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const [collapsed, setCollapsed] = useState(false)
 
   const menuItems = useMemo(() => {
     const base = [
@@ -38,6 +47,8 @@ const MainLayout: React.FC = () => {
 
   const selectedKey = menuItems.find((item) => location.pathname.startsWith(item.key))?.key
 
+  const currentLabel = menuItems.find((item) => item.key === selectedKey)?.label
+
   const profileMenu = {
     items: [
       {
@@ -63,9 +74,23 @@ const MainLayout: React.FC = () => {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider width={220} theme="light">
-        <div style={{ padding: '20px 16px', fontWeight: 700, color: '#1f7a3e' }}>
-          知识库后台
+      <Sider
+        width={220}
+        theme="light"
+        collapsible
+        collapsed={collapsed}
+        trigger={null}
+        style={{ borderRight: '1px solid rgba(31, 122, 62, 0.08)' }}
+      >
+        <div
+          style={{
+            padding: collapsed ? '18px 10px' : '18px 16px',
+            fontWeight: 800,
+            color: '#1f7a3e',
+            letterSpacing: 0.2,
+          }}
+        >
+          {collapsed ? 'KB' : '知识库后台'}
         </div>
         <Menu
           mode="inline"
@@ -77,19 +102,32 @@ const MainLayout: React.FC = () => {
       <Layout>
         <Header
           style={{
-            background: '#ffffff',
-            borderBottom: '1px solid rgba(31, 122, 62, 0.08)',
+            background: 'rgba(255, 255, 255, 0.86)',
+            borderBottom: '1px solid rgba(31, 122, 62, 0.10)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '0 24px',
+            backdropFilter: 'blur(8px)',
           }}
         >
-          <Typography.Text className="muted">面向农业知识库的管理与治理</Typography.Text>
+          <Space size={10}>
+            <Button
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed((v) => !v)}
+            />
+            <Space size={8}>
+              <Typography.Text style={{ fontWeight: 650 }}>
+                {typeof currentLabel === 'string' ? currentLabel : '控制台'}
+              </Typography.Text>
+              <Tag bordered={false} color="green">
+                {user?.roleId === 0 ? '超级管理员' : user?.roleId === 1 ? '管理员' : '普通用户'}
+              </Tag>
+            </Space>
+          </Space>
           <Dropdown menu={profileMenu} placement="bottomRight">
-            <Button type="text">
-              {user?.username || user?.userId}
-            </Button>
+            <Button type="text">{user?.username || user?.userId}</Button>
           </Dropdown>
         </Header>
         <Content className="page-shell">
