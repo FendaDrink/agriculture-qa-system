@@ -6,5 +6,6 @@ frontend/.swc
 frontend/dist
 frontend/node_modules
 frontend-admin/node_modules
+frontend-admin/dist
 algorithm-rag/chromaDB
 algorithm-rag/files

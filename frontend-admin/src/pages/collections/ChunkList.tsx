@@ -41,7 +41,7 @@ const ChunkList: React.FC = () => {
   const filteredChunks = useMemo(() => {
     const normalized = keyword.trim().toLowerCase()
     const list = normalized
-      ? data.filter((item) => {
+      ? data.filter((item: { content: string; id: string; createBy: string }) => {
           return (
             item.content.toLowerCase().includes(normalized) ||
             item.id.toLowerCase().includes(normalized) ||
