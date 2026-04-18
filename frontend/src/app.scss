@@ -1,7 +1,11 @@
 page {
-  background: #f2f7f1;
-  color: #1c2b20;
+  background:
+    radial-gradient(780px 320px at 10% -10%, rgba(38, 122, 81, 0.2), rgba(38, 122, 81, 0)),
+    radial-gradient(680px 300px at 88% 0%, rgba(232, 123, 63, 0.14), rgba(232, 123, 63, 0)),
+    linear-gradient(180deg, #eef6f0, #f8f9f7);
+  color: #1f3026;
   font-size: 28px;
+  font-family: 'Avenir Next', 'DIN Alternate', 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 
 .container {
@@ -10,7 +14,27 @@ page {
 }
 
 .card {
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(13, 60, 38, 0.06);
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 18px;
+  box-shadow: 0 10px 26px rgba(14, 59, 39, 0.08);
+  border: 1px solid rgba(19, 83, 56, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.safe-shell {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 16px);
+}
+
+.safe-bottom {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 12px);
+}
+
+.safe-top {
+  padding-top: calc(env(safe-area-inset-top) + 8px);
+}
+
+@media screen and (max-width: 370px) {
+  page {
+    font-size: 26px;
+  }
 }

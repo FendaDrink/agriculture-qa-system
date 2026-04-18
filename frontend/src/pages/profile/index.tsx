@@ -27,7 +27,7 @@ const ProfilePage = () => {
   }
 
   return (
-    <View className='profile-page'>
+    <View className='profile-page safe-shell'>
       {!loggedIn && (
         <View className='notice'>
           <Text className='notice-title'>未登录</Text>

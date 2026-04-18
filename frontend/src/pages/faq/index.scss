@@ -1,7 +1,10 @@
 .faq-page {
   min-height: 100vh;
   padding: 22px;
-  background: linear-gradient(180deg, #eef7f2 0%, #f7f9f7 100%);
+  background:
+    radial-gradient(620px 260px at 12% -8%, rgba(23, 121, 74, 0.2), rgba(23, 121, 74, 0)),
+    linear-gradient(180deg, #eef7f2 0%, #f7f9f7 100%);
+  box-sizing: border-box;
 }
 
 .faq-title {
@@ -24,11 +27,13 @@
 }
 
 .faq-card {
-  background: #fff;
-  border: 1px solid #dbece1;
-  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(20, 95, 62, 0.1);
+  border-radius: 18px;
   padding: 18px;
   margin-bottom: 12px;
+  box-shadow: 0 12px 24px rgba(12, 58, 38, 0.08);
+  backdrop-filter: blur(8px);
 }
 
 .faq-card-title {
@@ -52,7 +57,22 @@
   display: inline-block;
   padding: 8px 16px;
   border-radius: 999px;
-  background: #0f6a43;
+  background: linear-gradient(135deg, #0f6842, #138a56);
   color: #fff;
   font-size: 22px;
+  box-shadow: 0 8px 16px rgba(17, 96, 62, 0.2);
+}
+
+@media screen and (max-width: 430px) {
+  .faq-page {
+    padding: 16px;
+  }
+
+  .faq-title {
+    font-size: 32px;
+  }
+
+  .faq-desc {
+    font-size: 22px;
+  }
 }

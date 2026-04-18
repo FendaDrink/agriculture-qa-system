@@ -15,7 +15,7 @@ const FaqPage = () => {
   }
 
   return (
-    <View className='faq-page'>
+    <View className='faq-page safe-shell'>
       <Text className='faq-title'>高频问题参考</Text>
       <Text className='faq-desc'>点击“去提问”会把问题带到问答页直接发起咨询</Text>
 

@@ -215,7 +215,7 @@ const ChatPage = () => {
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 
   return (
-    <View className='qa-page'>
+    <View className='qa-page safe-shell'>
       <View className='toolbar'>
         <Button className='ghost-btn' onClick={() => setSidebarCollapsed((v) => !v)}>
           {sidebarCollapsed ? '展开会话' : '收起会话'}
@@ -287,11 +287,23 @@ const ChatPage = () => {
                 </View>
               </View>
             ) : (
-              messages.map((item) => <MessageBubble key={item.id} message={item} />)
+              <>
+                {messages.map((item) => <MessageBubble key={item.id} message={item} />)}
+                {loading ? (
+                  <View className='ai-loading-shell'>
+                    <Text className='ai-loading-text'>AI 正在组织答案...</Text>
+                    <View className='ai-loading-lines'>
+                      <View className='ai-loading-line line-1' />
+                      <View className='ai-loading-line line-2' />
+                      <View className='ai-loading-line line-3' />
+                    </View>
+                  </View>
+                ) : null}
+              </>
             )}
           </ScrollView>
 
-          <View className='composer'>
+          <View className='composer safe-bottom'>
             <Input
               className='composer-input'
               value={inputValue}

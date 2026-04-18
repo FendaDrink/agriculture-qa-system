@@ -48,7 +48,7 @@ const SessionsPage = () => {
   const currentId = Taro.getStorageSync(ACTIVE_SESSION_KEY)
 
   return (
-    <View className='session-page container'>
+    <View className='session-page container safe-shell'>
       <View className='session-create card'>
         <Input
           value={newTitle}

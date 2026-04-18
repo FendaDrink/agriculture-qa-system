@@ -26,7 +26,12 @@ const banners = [
 
 const HomePage = () => {
   return (
-    <View className='home-page'>
+    <View className='home-page safe-shell'>
+      <View className='hero-bar'>
+        <Text className='hero-badge'>湖北农业 AI 助手</Text>
+        <Text className='hero-sub'>病虫害、施肥、种植管理，一站式咨询</Text>
+      </View>
+
       <Swiper
         className='home-swiper'
         indicatorDots
@@ -49,6 +54,21 @@ const HomePage = () => {
           </SwiperItem>
         ))}
       </Swiper>
+
+      <View className='feature-strip'>
+        <View className='feature-item'>
+          <Text className='feature-value'>24h</Text>
+          <Text className='feature-label'>在线问答</Text>
+        </View>
+        <View className='feature-item'>
+          <Text className='feature-value'>RAG</Text>
+          <Text className='feature-label'>知识检索</Text>
+        </View>
+        <View className='feature-item'>
+          <Text className='feature-value'>多轮</Text>
+          <Text className='feature-label'>连续对话</Text>
+        </View>
+      </View>
 
       <View className='cta'>
         <Button className='cta-btn' onClick={() => Taro.switchTab({ url: '/pages/chat/index' })}>

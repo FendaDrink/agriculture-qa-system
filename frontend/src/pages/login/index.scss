@@ -1,25 +1,51 @@
 .login-page {
   min-height: 100vh;
   padding: 28px;
-  background: linear-gradient(180deg, #e9f6ed 0%, #f7f9f7 100%);
+  background:
+    radial-gradient(740px 320px at 10% -8%, rgba(20, 126, 78, 0.22), rgba(20, 126, 78, 0)),
+    radial-gradient(700px 260px at 92% 0%, rgba(233, 129, 66, 0.15), rgba(233, 129, 66, 0)),
+    linear-gradient(180deg, #ebf6ef 0%, #f8f9f8 100%);
+  box-sizing: border-box;
+}
+
+.hero {
+  margin-top: 8vh;
+  margin-bottom: 24px;
+}
+
+.hero-badge {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #0f6d44, #118758);
+  color: #fff;
+  font-size: 22px;
 }
 
 .title {
-  margin-top: 20vh;
   display: block;
-  font-size: 34px;
+  margin-top: 14px;
+  font-size: 38px;
   font-weight: 700;
-  color: #0f5b3b;
+  color: #0f5537;
   margin-bottom: 18px;
-  text-align: center;
+}
+
+.subtitle {
+  display: block;
+  margin-top: -8px;
+  color: #5f7b6e;
+  font-size: 24px;
+  line-height: 1.6;
 }
 
 .form {
-  background: #fff;
-  border: 1px solid #dcece1;
-  border-radius: 16px;
-  padding: 18px;
-  box-shadow: 0 12px 32px rgba(14, 76, 52, 0.08);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(17, 85, 56, 0.12);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 16px 34px rgba(14, 76, 52, 0.12);
+  backdrop-filter: blur(10px);
 }
 
 .label {
@@ -34,17 +60,33 @@
   height: 72px;
   line-height: 72px;
   border: 1px solid #d6e7dc;
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 0 14px;
   background: #fbfdfb;
+  box-shadow: inset 0 2px 10px rgba(13, 60, 38, 0.04);
 }
 
 .login-btn {
   margin-top: 18px;
   height: 72px;
   line-height: 72px;
-  border-radius: 12px;
-  background: #0f6a43;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #0f6842, #14905a);
   color: #fff;
   font-size: 28px;
+  box-shadow: 0 12px 22px rgba(15, 106, 67, 0.24);
+}
+
+@media screen and (max-width: 430px) {
+  .login-page {
+    padding: 20px;
+  }
+
+  .title {
+    font-size: 34px;
+  }
+
+  .subtitle {
+    font-size: 22px;
+  }
 }

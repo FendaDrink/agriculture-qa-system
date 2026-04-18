@@ -1,5 +1,9 @@
 .session-page {
   padding: 22px;
+  background:
+    radial-gradient(680px 280px at 8% -8%, rgba(18, 118, 73, 0.18), rgba(18, 118, 73, 0)),
+    linear-gradient(180deg, #eef7f2, #f8f9f7);
+  box-sizing: border-box;
 }
 
 .session-create {
@@ -7,26 +11,29 @@
   display: flex;
   gap: 12px;
   margin-bottom: 18px;
+  border-radius: 18px;
 }
 
 .session-input {
   flex: 1;
   height: 70px;
   line-height: 70px;
-  background: #f3f7f2;
-  border-radius: 12px;
+  background: #f5faf7;
+  border-radius: 14px;
   padding: 0 16px;
+  border: 1px solid #d9e9df;
 }
 
 .session-create-btn {
   min-width: 160px;
   height: 70px;
   line-height: 70px;
-  background: #0c6b43;
+  background: linear-gradient(135deg, #0d6641, #14905b);
   color: #fff;
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 0;
   font-size: 26px;
+  box-shadow: 0 10px 20px rgba(14, 92, 57, 0.22);
 }
 
 .session-empty {
@@ -46,10 +53,17 @@
   align-items: center;
   justify-content: space-between;
   border: 2px solid transparent;
+  border-radius: 16px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.session-item:active {
+  transform: scale(0.99);
 }
 
 .session-item.active {
-  border-color: #6fb489;
+  border-color: #78ba95;
+  box-shadow: 0 12px 24px rgba(17, 82, 53, 0.12);
 }
 
 .session-main {
@@ -70,7 +84,23 @@
 }
 
 .session-del-btn {
-  background: #fff1ef;
+  background: linear-gradient(135deg, #fff3f1, #fff9f8);
   color: #b94132;
-  border-radius: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(185, 65, 50, 0.18);
+}
+
+@media screen and (max-width: 430px) {
+  .session-page {
+    padding: 16px;
+  }
+
+  .session-create {
+    gap: 10px;
+  }
+
+  .session-create-btn {
+    min-width: 144px;
+    font-size: 24px;
+  }
 }

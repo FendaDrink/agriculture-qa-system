@@ -1,4 +1,4 @@
-import {Button, Image, Input, Text, View} from '@tarojs/components'
+import { Button, Input, Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import React, { useState } from 'react'
 import { login } from '@/services/chat'
@@ -34,8 +34,12 @@ const LoginPage = () => {
   }
 
   return (
-    <View className='login-page'>
-      <Text className='title'>农业智能问答助手</Text>
+    <View className='login-page safe-shell safe-top'>
+      <View className='hero'>
+        <Text className='hero-badge'>湖北农业 AI</Text>
+        <Text className='title'>农业智能问答助手</Text>
+        <Text className='subtitle'>登录后可使用病虫害诊断、种植问答与知识库检索能力</Text>
+      </View>
       <View className='form'>
         <Text className='label'>用户ID（手机号）</Text>
         <Input
