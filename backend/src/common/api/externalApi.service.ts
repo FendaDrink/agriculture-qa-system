@@ -38,7 +38,10 @@ export class ExternalApiService {
       filename: file.originalname,
       contentType: file.mimetype,
     })
-    const headers = formData.getHeaders()
+    const headers = {
+      ...formData.getHeaders(),
+      'X-Client-App': 'backend',
+    }
 
     const response = await lastValueFrom(this.httpService.post(url, formData, { headers }))
     return response.data
@@ -54,6 +57,9 @@ export class ExternalApiService {
         {
           params: {
             collection_id: collectionId,
+          },
+          headers: {
+            'X-Client-App': 'backend',
           },
         },
       ),
@@ -74,6 +80,9 @@ export class ExternalApiService {
             document_id: documentId,
             file_hash: fileHash,
           },
+          headers: {
+            'X-Client-App': 'backend',
+          },
         },
       ),
     )
@@ -84,12 +93,20 @@ export class ExternalApiService {
   async addChunk(chunk: AddChunkDto): Promise<ChunkDetailDto> {
     const url = '/add_chunk'
     const response = await lastValueFrom(
-      this.httpService.post(url, {
-        content: chunk.content,
-        collection_id: chunk.collectionId,
-        document_id: chunk.documentId,
-        user: chunk.user,
-      }),
+      this.httpService.post(
+        url,
+        {
+          content: chunk.content,
+          collection_id: chunk.collectionId,
+          document_id: chunk.documentId,
+          user: chunk.user,
+        },
+        {
+          headers: {
+            'X-Client-App': 'backend',
+          },
+        },
+      ),
     )
     return response.data
   }
@@ -98,13 +115,21 @@ export class ExternalApiService {
   async updateChunk(chunk: UpdateChunkDto): Promise<ChunkDetailDto> {
     const url = '/update_chunk'
     const response = await lastValueFrom(
-      this.httpService.post(url, {
-        id: chunk.id,
-        content: chunk.content,
-        collection_id: chunk.collectionId,
-        user: chunk.user,
-        document_id: chunk.documentId,
-      }),
+      this.httpService.post(
+        url,
+        {
+          id: chunk.id,
+          content: chunk.content,
+          collection_id: chunk.collectionId,
+          user: chunk.user,
+          document_id: chunk.documentId,
+        },
+        {
+          headers: {
+            'X-Client-App': 'backend',
+          },
+        },
+      ),
     )
     return response.data
   }
@@ -113,11 +138,19 @@ export class ExternalApiService {
   async deleteChunk(chunk: DeleteChunkDto): Promise<void> {
     const url = '/delete_chunk'
     await lastValueFrom(
-      this.httpService.post(url, {
-        id: chunk.id,
-        collection_id: chunk.collectionId,
-        document_id: chunk.documentId,
-      }),
+      this.httpService.post(
+        url,
+        {
+          id: chunk.id,
+          collection_id: chunk.collectionId,
+          document_id: chunk.documentId,
+        },
+        {
+          headers: {
+            'X-Client-App': 'backend',
+          },
+        },
+      ),
     )
   }
 
@@ -130,7 +163,10 @@ export class ExternalApiService {
       filename: file.originalname,
       contentType: file.mimetype,
     })
-    const headers = formData.getHeaders()
+    const headers = {
+      ...formData.getHeaders(),
+      'X-Client-App': 'backend',
+    }
 
     const response = await lastValueFrom(this.httpService.post(url, formData, { headers }))
     return response.data
@@ -150,6 +186,9 @@ export class ExternalApiService {
       },
       {
         responseType: 'stream',
+        headers: {
+          'X-Client-App': 'backend',
+        },
       },
     )
     return response.data
@@ -159,11 +198,19 @@ export class ExternalApiService {
   async recall(recallData: RecallDto): Promise<any> {
     const url = '/recall'
     const response = await lastValueFrom(
-      this.httpService.post(url, {
-        query: recallData.query,
-        collection_id: recallData.collectionId,
-        top_n: recallData.topN ?? 10,
-      }),
+      this.httpService.post(
+        url,
+        {
+          query: recallData.query,
+          collection_id: recallData.collectionId,
+          top_n: recallData.topN ?? 10,
+        },
+        {
+          headers: {
+            'X-Client-App': 'backend',
+          },
+        },
+      ),
     )
     return response.data
   }
@@ -177,6 +224,9 @@ export class ExternalApiService {
         file_hash: fileHash,
       },
       responseType: 'stream',
+      headers: {
+        'X-Client-App': 'backend',
+      },
     })
   }
 }

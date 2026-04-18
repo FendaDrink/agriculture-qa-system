@@ -1,6 +1,7 @@
 import { Layout, Menu, Button, Dropdown, Typography, Space, Tag } from 'antd'
 import {
   DatabaseOutlined,
+  FileSearchOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -39,6 +40,11 @@ const MainLayout: React.FC = () => {
         key: '/users',
         icon: <TeamOutlined />,
         label: '用户管理',
+      })
+      base.push({
+        key: '/logs',
+        icon: <FileSearchOutlined />,
+        label: '日志审计',
       })
     }
 

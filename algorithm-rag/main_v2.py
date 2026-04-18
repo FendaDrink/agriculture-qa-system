@@ -3,6 +3,7 @@ import time
 import uuid
 import mysql.connector
 import json
+import traceback
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -79,6 +80,52 @@ db_name = os.environ.get("DB_NAME")
 
 app = FastAPI()
 client = OpenAI(api_key=api_key, base_url=base_url)
+request_logs_table_ready = False
+
+
+def ensure_request_logs_table(mysql_db):
+    global request_logs_table_ready
+    if request_logs_table_ready:
+        return
+    create_sql = """
+        CREATE TABLE IF NOT EXISTS request_logs (
+            id VARCHAR(36) PRIMARY KEY,
+            create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+            source VARCHAR(32) NOT NULL,
+            client_app VARCHAR(32) NULL,
+            request_id VARCHAR(64) NULL,
+            method VARCHAR(16) NOT NULL,
+            path VARCHAR(512) NOT NULL,
+            original_url VARCHAR(1024) NOT NULL,
+            status_code INT NOT NULL,
+            duration_ms INT NOT NULL,
+            ip VARCHAR(64) NULL,
+            user_agent TEXT NULL,
+            referer TEXT NULL,
+            user_id VARCHAR(64) NULL,
+            role_id INT NULL,
+            headers LONGTEXT NULL,
+            `query` LONGTEXT NULL,
+            body LONGTEXT NULL,
+            error_message TEXT NULL,
+            error_stack LONGTEXT NULL,
+            INDEX idx_create_time (create_time),
+            INDEX idx_source (source),
+            INDEX idx_client_app (client_app),
+            INDEX idx_status_code (status_code),
+            INDEX idx_user_id (user_id),
+            INDEX idx_method_path (method, path)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    """
+    mysql_db.execute(create_sql)
+    request_logs_table_ready = True
+
+
+def safe_json(value):
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except Exception:
+        return json.dumps({"__error": "json_dumps_failed"}, ensure_ascii=False)
 
 
 # 封装 OpenAI 的 Embedding 模型接口
@@ -241,6 +288,87 @@ async def ignore_well_known_requests(request: Request, call_next):
         return JSONResponse(status_code=404, content={"detail": "Not Found"})
     response = await call_next(request)
     return response
+
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    if request.url.path.startswith("/.well-known") or request.url.path == "/health":
+        return await call_next(request)
+
+    start = time.time()
+    body_payload = None
+    error_message = None
+    error_stack = None
+    response = None
+    status_code = 500
+
+    content_type = (request.headers.get("content-type") or "").lower()
+    if content_type.startswith("multipart/form-data"):
+        body_payload = {
+            "__content_type": content_type,
+            "__content_length": request.headers.get("content-length"),
+            "__note": "multipart body omitted",
+        }
+    else:
+        try:
+            raw_body = await request.body()
+            body_payload = raw_body.decode("utf-8", errors="replace")
+        except Exception:
+            body_payload = ""
+
+    try:
+        response = await call_next(request)
+        status_code = getattr(response, "status_code", 200) or 200
+        return response
+    except Exception as e:
+        error_message = str(e)
+        error_stack = traceback.format_exc()
+        raise
+    finally:
+        try:
+            duration_ms = int((time.time() - start) * 1000)
+            request_id = (request.headers.get("x-request-id") or str(uuid.uuid4())).strip()
+            client_app = (request.headers.get("x-client-app") or request.headers.get("x-client") or "").strip() or None
+
+            mysql_db = MySQLConnector(host=db_host, user=db_username, password=db_password, database=db_name)
+            ensure_request_logs_table(mysql_db)
+            insert_sql = """
+                INSERT INTO request_logs
+                (id, source, client_app, request_id, method, path, original_url, status_code, duration_ms,
+                 ip, user_agent, referer, user_id, role_id, headers, `query`, body, error_message, error_stack)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            mysql_db.execute(
+                insert_sql,
+                (
+                    str(uuid.uuid4()),
+                    "algorithm",
+                    client_app,
+                    request_id,
+                    request.method.upper(),
+                    request.url.path,
+                    str(request.url),
+                    int(status_code),
+                    int(duration_ms),
+                    request.client.host if request.client else None,
+                    request.headers.get("user-agent"),
+                    request.headers.get("referer"),
+                    None,
+                    None,
+                    safe_json(dict(request.headers)),
+                    safe_json(dict(request.query_params)),
+                    body_payload if isinstance(body_payload, str) else safe_json(body_payload),
+                    error_message,
+                    error_stack,
+                ),
+            )
+            mysql_db.close()
+        except Exception:
+            try:
+                if "mysql_db" in locals():
+                    mysql_db.close()
+            except Exception:
+                pass
 
 
 @app.get("/health")

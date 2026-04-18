@@ -9,10 +9,17 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const token = getAuthToken()
+  // Identify admin client for backend logs.
+  // @ts-ignore
+  config.headers = {
+    ...config.headers,
+    'X-Client-App': 'admin',
+  }
   if (token) {
     // @ts-ignore
     config.headers = {
       ...config.headers,
+      'X-Client-App': 'admin',
       Authorization: `Bearer ${token}`,
     }
   }

@@ -9,10 +9,16 @@ const rawApi = axios.create({
 
 rawApi.interceptors.request.use((config) => {
   const token = getAuthToken()
+  // @ts-ignore
+  config.headers = {
+    ...config.headers,
+    'X-Client-App': 'admin',
+  }
   if (token) {
     // @ts-ignore
     config.headers = {
       ...config.headers,
+      'X-Client-App': 'admin',
       Authorization: `Bearer ${token}`,
     }
   }
@@ -32,4 +38,3 @@ rawApi.interceptors.response.use(
 )
 
 export default rawApi
-

@@ -19,6 +19,8 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, ResponseData<T
         const responseTime = Date.now() - now
         const statusCode =
           res.statusCode >= 200 && res.statusCode < 400 ? 200 : res.statusCode || 200
+        ;(res.locals as any).__appCode = statusCode
+        ;(res.locals as any).__appMessage = res.message || STATUS_CODES[statusCode]
         LoggerUtil.printLog(
           {
             responseTime,

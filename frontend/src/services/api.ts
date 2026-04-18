@@ -31,6 +31,7 @@ const request = async <T>(
     data,
     header: {
       'Content-Type': 'application/json',
+      'X-Client-App': 'frontend',
       Authorization:  token ? `Bearer ${token}` : '',
     },
   })

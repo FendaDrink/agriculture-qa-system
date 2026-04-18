@@ -24,6 +24,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (exception instanceof BadRequestException) {
       const errors = exception.getResponse() as any
       const code = exception.getStatus()
+      ;(response.locals as any).__appCode = code
+      ;(response.locals as any).__appMessage = '请求参数错误：' + errors.message.toString()
+      ;(response.locals as any).__errorMessage = '请求参数错误：' + errors.message.toString()
       LoggerUtil.printLog(request, code, '请求参数错误:' + errors.message.toString())
       return response.status(200).json({
         code,
@@ -46,10 +49,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
     } else if (exception instanceof Error) {
       code = HttpStatus.INTERNAL_SERVER_ERROR
       message = exception.message || STATUS_CODES[code]
+      ;(response.locals as any).__errorStack = exception.stack || null
     } else {
       code = HttpStatus.BAD_REQUEST
       message = STATUS_CODES[code]
     }
+    ;(response.locals as any).__appCode = Number(code)
+    ;(response.locals as any).__appMessage = '' + message
+    ;(response.locals as any).__errorMessage = '' + message
     LoggerUtil.printLog(request, code, '' + message)
     response.status(200).json({
       code,
