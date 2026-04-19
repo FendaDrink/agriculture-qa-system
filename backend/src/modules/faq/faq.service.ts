@@ -82,6 +82,20 @@ export class FaqService {
     return { items: merged }
   }
 
+  async listRecommend(limitInput?: string | number) {
+    const limit = clamp(Number(limitInput || 4), 1, 20)
+    const rows = await this.getHighFrequencyRows(limit)
+    return {
+      items: rows.map((item, index) => ({
+        id: `recommend-${index}`,
+        question: item.question,
+        frequency: Number(item.frequency),
+        latestAskedAt: item.latestAskedAt,
+        source: 'auto',
+      })),
+    }
+  }
+
   async listHighFrequency(limitInput?: string | number) {
     const limit = clamp(Number(limitInput || 20), 1, 100)
     const rows = await this.getHighFrequencyRows(limit)

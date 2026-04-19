@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator'
+import { IsInt, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator'
 
 export class CreateChatMessageDto {
   @IsString()
@@ -13,7 +13,7 @@ export class CreateChatMessageDto {
   @IsNotEmpty()
   content: string
 
-  @IsString()
+  @IsObject()
   @IsOptional()
   extra?: Record<string, any>
 }

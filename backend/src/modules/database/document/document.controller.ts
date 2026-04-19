@@ -11,6 +11,7 @@ import {
   UploadedFile,
   UseInterceptors,
   Res,
+  UnauthorizedException,
 } from '@nestjs/common'
 import { DocumentService } from './document.service'
 import { LogRequestMiddleware } from '../../../app.middleware'
@@ -21,10 +22,14 @@ import { UpdateDocDto } from './dto/updateDocDto.dto'
 import { UploadDocDto } from './dto/uploadDocDto.dto'
 import { FileInterceptor } from '@nestjs/platform-express'
 import type { Response } from 'express'
+import { JwtService } from '@nestjs/jwt'
 
 @Controller('database/document')
 export class DocumentController {
-  constructor(private readonly documentService: DocumentService) {}
+  constructor(
+    private readonly documentService: DocumentService,
+    private readonly jwtService: JwtService,
+  ) {}
 
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(LogRequestMiddleware).forRoutes(DocumentController)
@@ -124,5 +129,29 @@ export class DocumentController {
     }
 
     stream.pipe(res)
+  }
+
+  /**
+   * 小程序 webview 预览 PDF（token 通过 query 传递）
+   * 注意：webview 场景无法自定义 Authorization header，因此提供 query-token 兼容入口。
+   */
+  @Get('/file/public')
+  async getDocumentFilePublic(
+    @Query('id') id: string,
+    @Query('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!token) {
+      throw new UnauthorizedException('未登陆无权限，请登录后再试')
+    }
+    try {
+      this.jwtService.verify(token)
+    } catch (error: any) {
+      if (error?.name === 'TokenExpiredError') {
+        throw new UnauthorizedException('登陆信息失效，请重新登陆后再试')
+      }
+      throw new UnauthorizedException('密码错误')
+    }
+    return this.getDocumentFile(id, res)
   }
 }

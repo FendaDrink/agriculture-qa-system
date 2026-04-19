@@ -1,15 +1,17 @@
 import { Button, Input, ScrollView, Text, View } from '@tarojs/components'
-import Taro, { useDidHide, useDidShow } from '@tarojs/taro'
+import Taro, { useDidHide, useDidShow, usePullDownRefresh } from '@tarojs/taro'
 import React, { useEffect, useRef, useState } from 'react'
 import MessageBubble from '../../components/MessageBubble'
 import {
   createSession,
   deleteSession,
+  getFollowupSuggestions,
   listQuickQuestions,
   listMessages,
   listSessions,
   speechRecognizeByFile,
   streamCompletion,
+  QuickQuestionItem,
 } from '@/services/chat'
 import { getAppSettings } from '@/services/settings'
 import { ChatMessage, ChatSession } from '@/types/chat'
@@ -51,7 +53,10 @@ const ChatPage = () => {
   const completionAbortedRef = useRef(false)
   const activeAssistantMessageIdRef = useRef('')
 
-  const [quickQuestions, setQuickQuestions] = useState<string[]>([])
+  const [quickQuestions, setQuickQuestions] = useState<QuickQuestionItem[]>([])
+  const [quickLoading, setQuickLoading] = useState(false)
+  const [followupQuestions, setFollowupQuestions] = useState<string[]>([])
+  const [followupLoading, setFollowupLoading] = useState(false)
 
   const isIgnorableRecorderError = (err: unknown) => {
     const msg = String((err as any)?.errMsg || (err as any)?.message || err || '').toLowerCase()
@@ -342,6 +347,18 @@ const ChatPage = () => {
     return data
   }
 
+  const refreshQuickQuestions = async (silent = true) => {
+    if (!silent) setQuickLoading(true)
+    try {
+      const quickList = await listQuickQuestions(4)
+      setQuickQuestions(quickList)
+    } catch {
+      setQuickQuestions([])
+    } finally {
+      if (!silent) setQuickLoading(false)
+    }
+  }
+
   const finalizeCanceledAssistantMessage = () => {
     const targetId = activeAssistantMessageIdRef.current
     if (!targetId) return
@@ -356,6 +373,35 @@ const ChatPage = () => {
         return { ...item, content: `${content}\n\n（已取消）` }
       }),
     )
+  }
+
+  const refreshFollowupQuestions = async (sessionId: string, baseQuery?: string) => {
+    if (!sessionId) {
+      setFollowupQuestions([])
+      return
+    }
+    setFollowupLoading(true)
+    try {
+      const history = messages
+        .filter((item) => item.status === 1)
+        .map((item) => ({
+          sender: item.sender,
+          content: item.content,
+          extra: item.extra as Record<string, unknown> | undefined,
+        }))
+        .slice(-12)
+      const rows = await getFollowupSuggestions({
+        sessionId,
+        query: baseQuery,
+        history,
+        limit: 3,
+      })
+      setFollowupQuestions(rows)
+    } catch {
+      setFollowupQuestions([])
+    } finally {
+      setFollowupLoading(false)
+    }
   }
 
   const cancelCompletion = () => {
@@ -415,6 +461,7 @@ const ChatPage = () => {
         setActiveSessionId(created.id)
         setSessions((prev) => [created, ...prev.filter((item) => item.id !== created.id)])
         setMessages([])
+        setFollowupQuestions([])
       }
 
       const now = Date.now()
@@ -475,6 +522,8 @@ const ChatPage = () => {
 
       await refreshMessages(sessionId)
       await refreshSessions()
+      refreshQuickQuestions().catch(() => {})
+      refreshFollowupQuestions(sessionId, query).catch(() => {})
     } catch (err) {
       const errMsg = String((err as any)?.errMsg || (err as Error)?.message || '')
       const aborted = completionAbortedRef.current || errMsg.toLowerCase().includes('abort')
@@ -502,6 +551,7 @@ const ChatPage = () => {
     setSidebarCollapsed(true)
     setActiveSessionId('')
     setMessages([])
+    setFollowupQuestions([])
     if (sidebarCollapsed) setSidebarCollapsed(false)
   }
 
@@ -518,6 +568,7 @@ const ChatPage = () => {
       if (sessionId === activeSessionId) {
         setActiveSessionId('')
         setMessages([])
+        setFollowupQuestions([])
       }
       await ensureSession()
     } catch (err) {
@@ -528,15 +579,18 @@ const ChatPage = () => {
   const onSwitchSession = async (sessionId: string) => {
     setActiveSessionId(sessionId)
     await refreshMessages(sessionId)
+    refreshFollowupQuestions(sessionId).catch(() => {})
     if (!sidebarCollapsed) setSidebarCollapsed(true)
   }
 
   useDidShow(async () => {
     if (!await ensureAuthed()) return
     ;(async () => {
-      const quickList = await listQuickQuestions(4).catch(() => [])
-      setQuickQuestions(quickList)
-      await ensureSession()
+      await refreshQuickQuestions()
+      const sid = await ensureSession()
+      if (sid) {
+        await refreshFollowupQuestions(sid)
+      }
       const prefill = Taro.getStorageSync(PREFILL_KEY)
       if (prefill) {
         Taro.removeStorageSync(PREFILL_KEY)
@@ -556,7 +610,22 @@ const ChatPage = () => {
     }
   })
 
+  usePullDownRefresh(() => {
+    ;(async () => {
+      try {
+        await refreshQuickQuestions(false)
+        const sid = await ensureSession()
+        if (sid) {
+          await refreshFollowupQuestions(sid)
+        }
+      } finally {
+        Taro.stopPullDownRefresh()
+      }
+    })()
+  })
+
   const activeSession = sessions.find((s) => s.id === activeSessionId)
+  const lastAssistantId = [...messages].reverse().find((item) => item.sender === 0)?.id || ''
 
   return (
     <View className='qa-page safe-shell'>
@@ -623,10 +692,17 @@ const ChatPage = () => {
               <View className='welcome-card'>
                 <Text className='welcome-title'>请输入农业问题，系统将实时流式生成答案</Text>
                 <View className='quick-list'>
+                  <View className='quick-tools'>
+                    <Text className='quick-tools-title'>高频问题引导</Text>
+                    <Text className='quick-tools-refresh' onClick={() => refreshQuickQuestions(false)}>
+                      {quickLoading ? '刷新中...' : '换一批'}
+                    </Text>
+                  </View>
                   {quickQuestions.length > 0 ? (
                     quickQuestions.map((q) => (
-                      <View key={q} className='quick-item' onClick={() => submitQuestion(q)}>
-                        <Text>{q}</Text>
+                      <View key={q.question} className='quick-item' onClick={() => submitQuestion(q.question)}>
+                        <Text>{q.question}</Text>
+                        {q.frequency ? <Text className='quick-item-meta'>{q.frequency}次</Text> : null}
                       </View>
                     ))
                   ) : (
@@ -638,7 +714,29 @@ const ChatPage = () => {
               </View>
             ) : (
               <>
-                {messages.map((item) => <MessageBubble key={item.id} message={item} />)}
+                {messages.map((item) => (
+                  <View key={item.id}>
+                    <MessageBubble message={item} />
+                    {item.id === lastAssistantId && !loading ? (
+                      <View className='followup-card'>
+                        <Text className='followup-title'>猜你继续想问</Text>
+                        {followupLoading ? (
+                          <Text className='followup-loading'>正在生成推荐...</Text>
+                        ) : followupQuestions.length > 0 ? (
+                          <View className='followup-list'>
+                            {followupQuestions.map((q) => (
+                              <View key={q} className='followup-item' onClick={() => submitQuestion(q)}>
+                                <Text>{q}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        ) : (
+                          <Text className='followup-loading'>暂无推荐，可继续输入问题</Text>
+                        )}
+                      </View>
+                    ) : null}
+                  </View>
+                ))}
                 {loading ? (
                   <View className='ai-loading-shell'>
                     <Text className='ai-loading-text'>AI 正在组织答案...</Text>

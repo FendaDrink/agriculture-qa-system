@@ -21,6 +21,7 @@ const LoginPage = () => {
     try {
       const token = await login(userId.trim(), password.trim())
       const payload = parseBearerTokenPayload(token)
+      console.log(payload, 'gogoing')
       saveAppSettings({ userId: userId.trim(), token, username: payload.username })
       await Taro.showToast({ title: '登录成功', icon: 'success' })
       setPassword('')

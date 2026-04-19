@@ -33,6 +33,11 @@ export class FaqController {
     return this.faqService.listMerged(limit)
   }
 
+  @Get('/recommend')
+  async listRecommend(@Query('limit') limit?: string | number) {
+    return this.faqService.listRecommend(limit)
+  }
+
   @Get('/high-frequency')
   @UseGuards(AuthGuard)
   async listHighFrequency(@Req() req: any, @Query('limit') limit?: string | number) {

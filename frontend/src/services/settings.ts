@@ -8,7 +8,7 @@ const defaults: AppSettings = {
   token: '',
   userId: '',
   model: 'gpt-3.5-turbo-1106',
-  collectionId: '013573a2_agriculture',
+  collectionId: '28b0f5cc_武汉市知识库',
   username: '',
 }
 

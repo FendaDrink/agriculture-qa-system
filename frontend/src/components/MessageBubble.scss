@@ -37,6 +37,31 @@
   box-shadow: 0 8px 16px rgba(13, 65, 42, 0.08);
 }
 
+.message-sources {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px dashed #c8ddcf;
+}
+
+.message-sources-title {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 22px;
+  color: #4d6e5a;
+}
+
+.message-source-item {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #edf7f1;
+}
+
+.message-source-name {
+  font-size: 22px;
+  color: #10623f;
+}
+
 @keyframes message-fade-in {
   from {
     opacity: 0;

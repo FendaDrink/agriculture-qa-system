@@ -15,6 +15,7 @@ import { AuthGuard } from '../auth/auth.guard'
 import { SpeechResDto } from './dto/speechRes.dto'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { CompletionDto } from './dto/completion.dto'
+import { FollowupDto } from './dto/followup.dto'
 import { Response } from 'express'
 
 @Controller('chat')
@@ -39,6 +40,12 @@ class ChatController {
   @UseGuards(AuthGuard)
   async completion(@Body() data: CompletionDto, @Res() res: Response): Promise<any> {
     return this.chatService.completion(data, res)
+  }
+
+  @Post('/followup-suggestions')
+  @UseGuards(AuthGuard)
+  async followupSuggestions(@Body() data: FollowupDto): Promise<{ items: string[] }> {
+    return this.chatService.followupSuggestions(data)
   }
 }
 

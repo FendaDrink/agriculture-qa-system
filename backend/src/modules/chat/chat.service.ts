@@ -10,6 +10,8 @@ import { ChatMessageService } from './message/chatMessage.service'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { CollectionEntity } from '../database/entities/collection.entity'
+import { DocumentEntity } from '../database/document/entities/document.entity'
+import { FollowupDto } from './dto/followup.dto'
 
 const HUBEI_CITIES = [
   '武汉',
@@ -40,7 +42,13 @@ export class ChatService {
     private chatMessageService: ChatMessageService,
     @InjectRepository(CollectionEntity, 'rag')
     private readonly collectionRepo: Repository<CollectionEntity>,
+    @InjectRepository(DocumentEntity, 'rag')
+    private readonly documentRepo: Repository<DocumentEntity>,
   ) {}
+
+  private quoteTableName(tableName: string): string {
+    return `\`${String(tableName || '').replace(/`/g, '``')}\``
+  }
 
   private extractCityFromQuery(query: string): string {
     const normalized = (query || '').replace(/\s+/g, '')
@@ -90,9 +98,13 @@ export class ChatService {
           })
           const items = Array.isArray(response?.items) ? response.items : []
           return items.map((item: any) => ({
+            id: item?.id ? String(item.id) : '',
             content: String(item?.content || ''),
             score: Number(item?.score ?? (Number.isFinite(Number(item?.distance)) ? 1 / (1 + Number(item.distance)) : 0)),
             sourceCollectionId: collectionId,
+            documentId: item?.documentId ? String(item.documentId) : item?.metadata?.documentId ? String(item.metadata.documentId) : '',
+            fileHash: item?.fileHash ? String(item.fileHash) : item?.metadata?.fileHash ? String(item.metadata.fileHash) : '',
+            fileName: item?.fileName ? String(item.fileName) : item?.metadata?.fileName ? String(item.metadata.fileName) : '',
           }))
         } catch {
           return []
@@ -104,7 +116,15 @@ export class ChatService {
       .filter((item) => item.content.trim())
       .sort((a, b) => b.score - a.score)
 
-    const deduped: Array<{ content: string; score?: number; sourceCollectionId?: string }> = []
+    const deduped: Array<{
+      id?: string
+      content: string
+      score?: number
+      sourceCollectionId?: string
+      documentId?: string
+      fileHash?: string
+      fileName?: string
+    }> = []
     const seen = new Set<string>()
     for (const item of merged) {
       const key = item.content.trim()
@@ -114,6 +134,117 @@ export class ChatService {
       if (deduped.length >= totalTopN) break
     }
     return deduped
+  }
+
+  private async buildSourceMeta(
+    chunks: Array<{
+      id?: string
+      content: string
+      score?: number
+      sourceCollectionId?: string
+      documentId?: string
+      fileHash?: string
+      fileName?: string
+    }>,
+  ) {
+    if (!chunks.length) return []
+
+    const collectionIds = Array.from(new Set(chunks.map((c) => c.sourceCollectionId).filter(Boolean))) as string[]
+    const docMap = new Map<string, DocumentEntity>()
+
+    for (const collectionId of collectionIds) {
+      const docs = await this.documentRepo.find({
+        where: { collectionId },
+        order: { updateTime: 'DESC' },
+      })
+      docs.forEach((doc) => docMap.set(doc.id, doc))
+    }
+
+    const unresolvedByCollection = new Map<string, Array<{ chunkId: string; chunkIndex: number }>>()
+    const resolvedDocIdByIndex = new Map<number, string>()
+
+    chunks.forEach((chunk, index) => {
+      if (chunk.documentId && docMap.has(chunk.documentId)) {
+        resolvedDocIdByIndex.set(index, chunk.documentId)
+        return
+      }
+      if (!chunk.sourceCollectionId || !chunk.id) return
+      const list = unresolvedByCollection.get(chunk.sourceCollectionId) || []
+      list.push({ chunkId: chunk.id, chunkIndex: index })
+      unresolvedByCollection.set(chunk.sourceCollectionId, list)
+    })
+
+    for (const [collectionId, unresolvedList] of unresolvedByCollection.entries()) {
+      const docs = await this.documentRepo.find({
+        where: { collectionId },
+        order: { updateTime: 'DESC' },
+      })
+      const pending = unresolvedList.filter((item) => !resolvedDocIdByIndex.has(item.chunkIndex))
+      if (!pending.length) continue
+
+      for (const doc of docs) {
+        if (!pending.length) break
+        const tableName = this.quoteTableName(doc.id)
+        const chunkIds = pending.map((item) => item.chunkId)
+        const placeholders = chunkIds.map(() => '?').join(', ')
+        try {
+          const rows = await this.documentRepo.manager.query(
+            `SELECT id FROM ${tableName} WHERE id IN (${placeholders})`,
+            chunkIds,
+          )
+          const hitIds = new Set((rows || []).map((row: any) => String(row?.id || '')))
+          if (!hitIds.size) continue
+          for (let i = pending.length - 1; i >= 0; i--) {
+            if (hitIds.has(pending[i].chunkId)) {
+              resolvedDocIdByIndex.set(pending[i].chunkIndex, doc.id)
+              pending.splice(i, 1)
+            }
+          }
+        } catch {
+          continue
+        }
+      }
+    }
+
+    const sourceRows = chunks
+      .map((chunk, index) => {
+        const docId = resolvedDocIdByIndex.get(index) || chunk.documentId
+        const doc = docId ? docMap.get(docId) : undefined
+        if (!doc) return null
+        return {
+          documentId: doc.id,
+          fileName: chunk.fileName || doc.fileName,
+          fileHash: chunk.fileHash || doc.fileHash,
+          collectionId: chunk.sourceCollectionId || doc.collectionId,
+          score: Number(chunk.score || 0),
+          chunkId: chunk.id || '',
+        }
+      })
+      .filter(Boolean) as Array<{
+      documentId: string
+      fileName: string
+      fileHash: string
+      collectionId: string
+      score: number
+      chunkId: string
+    }>
+
+    const deduped = new Map<string, (typeof sourceRows)[number]>()
+    for (const row of sourceRows) {
+      // 同一文件只保留一条（最高分），避免来源列表重复
+      const key = row.documentId || row.fileHash || row.fileName
+      if (!deduped.has(key) || (deduped.get(key)?.score || 0) < row.score) {
+        deduped.set(key, row)
+      }
+    }
+
+    return Array.from(deduped.values())
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map((item, index) => ({
+        ...item,
+        index: index + 1,
+      }))
   }
 
   /**
@@ -148,6 +279,19 @@ export class ChatService {
     try {
       const recallTarget = await this.resolveRecallCollections(completionData.query, completionData.collectionId)
       const contextChunks = await this.buildContextChunks(completionData.query, recallTarget.collectionIds, 5)
+      const sourceMeta = await this.buildSourceMeta(contextChunks)
+      const sourceIndexByDocumentId = new Map<string, number>()
+      sourceMeta.forEach((item: any) => {
+        if (item.documentId) sourceIndexByDocumentId.set(String(item.documentId), Number(item.index || 0))
+      })
+      const citedContextChunks = contextChunks.map((chunk: any) => {
+        const docIdx = chunk?.documentId ? sourceIndexByDocumentId.get(String(chunk.documentId)) : undefined
+        if (!docIdx) return chunk
+        return {
+          ...chunk,
+          content: `[${docIdx}] ${chunk.content}`,
+        }
+      })
 
       // 写入用户输入
       const userMsg = {
@@ -159,7 +303,7 @@ export class ChatService {
       const stream: Readable = await this.externalApiService.completion({
         ...completionData,
         collectionId: recallTarget.collectionIds[0] || completionData.collectionId,
-        contextChunks,
+        contextChunks: citedContextChunks,
       })
       res.status(200)
       res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
@@ -204,12 +348,20 @@ export class ChatService {
         if (!fullText.trim()) {
           fullText = '未获取到有效回复，请稍后重试。'
         }
+        if (sourceMeta.length > 0 && !/\[(?:来源)?\d+\]/.test(fullText)) {
+          const refs = sourceMeta.map((item: any) => `[${item.index}]`).join('')
+          fullText = `${fullText}\n\n参考来源：${refs}`
+        }
 
         // 写入回答
         const assistMsg = {
           sessionId: completionData.sessionId,
           sender: 0,
           content: fullText,
+          extra: {
+            sources: sourceMeta,
+            city: recallTarget.city,
+          },
         }
         await this.chatMessageService.createChatMessage(assistMsg)
         res.end()
@@ -228,5 +380,38 @@ export class ChatService {
       console.log(err)
       res.end()
     }
+  }
+
+  async followupSuggestions(payload: FollowupDto): Promise<{ items: string[] }> {
+    const sessionId = (payload.sessionId || '').trim()
+    if (!sessionId) {
+      throw new BadRequestException('缺少会话ID')
+    }
+
+    let history = Array.isArray(payload.history) ? payload.history : []
+    if (!history.length) {
+      const allMessages = await this.chatMessageService.findAllChatMessage(sessionId)
+      history = allMessages
+        .filter((item) => item.status === 1)
+        .sort((a, b) => +new Date(a.createTime) - +new Date(b.createTime))
+        .map((item) => ({
+          sender: item.sender,
+          content: item.content,
+          extra: item.extra,
+        }))
+        .slice(-12)
+    }
+
+    const response = await this.externalApiService.followupSuggestions({
+      ...payload,
+      history,
+    })
+    const items = Array.isArray(response?.items)
+      ? response.items
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+        .slice(0, payload.limit || 3)
+      : []
+    return { items }
   }
 }

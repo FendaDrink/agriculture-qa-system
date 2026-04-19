@@ -2,7 +2,7 @@
  * chat_message 表
  */
 import { Entity, Column, PrimaryColumn, CreateDateColumn } from 'typeorm'
-import { IsInt, IsOptional, IsString } from 'class-validator'
+import { IsInt, IsObject, IsOptional, IsString } from 'class-validator'
 
 @Entity('chat_message')
 export class ChatMessageEntity {
@@ -31,6 +31,6 @@ export class ChatMessageEntity {
 
   @Column({ type: 'simple-json', nullable: true, comment: '拓展字段' })
   @IsOptional()
-  @IsString()
+  @IsObject()
   extra?: Record<string, any>
 }

@@ -1,0 +1,51 @@
+.pdf-page {
+  min-height: 100vh;
+  background: #f3f8f3;
+  position: relative;
+}
+
+.pdf-empty {
+  min-height: 100vh;
+  padding: 48px 32px;
+  box-sizing: border-box;
+}
+
+.pdf-empty-title {
+  display: block;
+  font-size: 34px;
+  line-height: 1.4;
+  color: #1f3d2e;
+  margin-bottom: 20px;
+}
+
+.pdf-empty-tip {
+  display: block;
+  font-size: 26px;
+  color: #6e8679;
+}
+
+.pdf-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(243, 248, 243, 0.95);
+  padding: 0 28px;
+  box-sizing: border-box;
+}
+
+.pdf-overlay-text {
+  font-size: 28px;
+  color: #2d4e3d;
+}
+
+.pdf-overlay-action {
+  margin-top: 16px;
+  font-size: 25px;
+  color: #0f6a43;
+}

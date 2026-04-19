@@ -1,4 +1,4 @@
-import { IsDate, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator'
+import { IsDate, IsInt, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator'
 
 export class ChatMessageDto {
   @IsString()
@@ -25,7 +25,7 @@ export class ChatMessageDto {
   @IsNotEmpty()
   status: number
 
-  @IsString()
+  @IsObject()
   @IsOptional()
   extra?: Record<string, any>
 }

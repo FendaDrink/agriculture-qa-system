@@ -23,6 +23,16 @@ export interface ChatMessage {
   extra?: Record<string, unknown>
 }
 
+export interface MessageSourceItem {
+  index?: number
+  documentId: string
+  fileName: string
+  fileHash?: string
+  collectionId?: string
+  chunkId?: string
+  score?: number
+}
+
 export interface CompletionPayload {
   query: string
   model?: string

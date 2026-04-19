@@ -71,6 +71,13 @@ class RecallRequest(BaseModel):
     top_n: int = 10
 
 
+class FollowUpRequest(BaseModel):
+    query: Optional[str] = None
+    model: Optional[str] = None
+    limit: int = 3
+    chat_history: Optional[List[ChatMessage]] = None
+
+
 # 加载环境变量
 _ = load_dotenv(find_dotenv())
 base_url = os.environ.get("OPENAI_API_BASE")
@@ -324,7 +331,7 @@ class MyVectorDBConnector:
         return f"kb_{digest}"
 
     # 批量embedding并新增分段
-    def add_chunk(self, documents, document_id, user):
+    def add_chunk(self, documents, document_id, user, base_metadata=None):
         # Mysql 实例
         mysql_db = MySQLConnector(host=db_host, user=db_username, password=db_password, database=db_name)
         ids = [f"{uuid.uuid4()}" for i in range(len(documents))]
@@ -347,7 +354,8 @@ class MyVectorDBConnector:
         self.collection.add(
             embeddings=embeddings,
             documents=documents,
-            ids=ids
+            ids=ids,
+            metadatas=[dict(base_metadata or {}) for _ in ids],
         )
 
         return ids
@@ -675,7 +683,17 @@ async def upload_and_embed_file(
             """
 
             mysql_db.execute(create_table_sql)
-            vector_db.add_chunk(paragraphs, table_name, user)
+            vector_db.add_chunk(
+                paragraphs,
+                table_name,
+                user,
+                {
+                    "document_id": new_file_hash,
+                    "file_hash": unique_filename,
+                    "file_name": file_name,
+                    "collection_id": collection_id,
+                },
+            )
 
             mysql_db.close()
             return {
@@ -846,11 +864,16 @@ async def recall_chunks(request: RecallRequest):
         raise HTTPException(status_code=400, detail="缺少query参数")
 
     vector_db = MyVectorDBConnector(collection_id, get_embeddings)
-    results = vector_db.search(query, top_n)
+    results = vector_db.collection.query(
+        query_embeddings=vector_db.embedding_fn([query]),
+        n_results=top_n,
+        include=["documents", "distances", "metadatas"],
+    )
 
     ids = results.get('ids', [[]])
     documents = results.get('documents', [[]])
     distances = results.get('distances', [[]])
+    metadatas = results.get('metadatas', [[]])
 
     items = []
     if ids and documents and len(ids) > 0 and len(documents) > 0:
@@ -867,6 +890,15 @@ async def recall_chunks(request: RecallRequest):
                     item["score"] = 1 / (1 + float(distance))
                 except Exception:
                     pass
+            if metadatas and len(metadatas) > 0 and len(metadatas[0]) > index:
+                metadata = metadatas[0][index] or {}
+                item["metadata"] = metadata
+                if metadata.get("document_id"):
+                    item["documentId"] = metadata.get("document_id")
+                if metadata.get("file_hash"):
+                    item["fileHash"] = metadata.get("file_hash")
+                if metadata.get("file_name"):
+                    item["fileName"] = metadata.get("file_name")
             items.append(item)
 
     return {"items": items}
@@ -979,6 +1011,82 @@ async def create_completion(request: QueryRequest):
         raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"处理请求失败: {str(e)}")
+
+
+@app.post("/followup_suggestions")
+async def followup_suggestions(request: FollowUpRequest):
+    try:
+        model = request.model or "gpt-4o-mini"
+        limit = max(1, min(int(request.limit or 3), 8))
+        query = (request.query or "").strip()
+        chat_history = request.chat_history or []
+
+        history_lines = []
+        for chat in chat_history[-12:]:
+            role = "用户" if int(chat.get("sender", 1)) == 1 else "助手"
+            content = str(chat.get("content", "")).strip()
+            if content:
+                history_lines.append(f"{role}：{content}")
+        history_text = "\n".join(history_lines)
+
+        prompt = f"""
+你是湖北农业问答场景的“后续问题推荐器”。
+请基于下面对话，预测用户接下来最可能继续追问的问题。
+
+要求：
+1. 仅输出 JSON，格式必须为：{{"items":["问题1","问题2","问题3"]}}
+2. 只输出问题，不要输出答案、解释、前后缀文字。
+3. 问题要简洁、自然、可直接点击提问，长度 8-40 字。
+4. 问题要和当前对话强相关，避免泛化和重复。
+5. 生成 {limit} 条。
+
+当前用户问题：{query}
+
+近期对话：
+{history_text}
+"""
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "你只返回严格 JSON，不要返回其他内容。"},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.4,
+            stream=False,
+        )
+        content = response.choices[0].message.content if response.choices else ""
+        items = []
+        try:
+            parsed = json.loads(content or "{}")
+            raw_items = parsed.get("items", []) if isinstance(parsed, dict) else []
+            if isinstance(raw_items, list):
+                for item in raw_items:
+                    text = str(item or "").strip()
+                    if text:
+                        items.append(text)
+        except Exception:
+            # 兼容模型偶发非 JSON 输出
+            fallback_lines = re.findall(r'[^\n，。!?！？]{6,40}[？?]?', content or "")
+            for line in fallback_lines:
+                text = line.strip().strip('"').strip("'")
+                if text:
+                    items.append(text)
+
+        # 去重并截断
+        dedup = []
+        seen = set()
+        for item in items:
+            key = item.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            dedup.append(item)
+            if len(dedup) >= limit:
+                break
+        return {"items": dedup}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"后续问题推荐失败: {str(e)}")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import Taro from '@tarojs/taro'
 import {getAppSettings} from '@/services/settings'
 
-function base64Decode(str: string) {
+function base64DecodeBinary(str: string) {
   const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
   let output = ''
   let chr1, chr2, chr3
@@ -26,6 +26,23 @@ function base64Decode(str: string) {
     if (enc4 !== 64) output += String.fromCharCode(chr3)
   }
   return output
+}
+
+function decodeUtf8FromBinary(binary: string) {
+  // 优先使用 TextDecoder，兼容 UTF-8（中文用户名）
+  if (typeof TextDecoder !== 'undefined') {
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i) & 0xff
+    }
+    return new TextDecoder('utf-8').decode(bytes)
+  }
+  // 回退方案
+  let encoded = ''
+  for (let i = 0; i < binary.length; i++) {
+    encoded += `%${(`00${binary.charCodeAt(i).toString(16)}`).slice(-2)}`
+  }
+  return decodeURIComponent(encoded)
 }
 
 export const ensureAuthed = async () => {
@@ -59,12 +76,15 @@ export const parseBearerTokenPayload = (bearerToken: string) => {
       throw new Error('Token 格式错误：不是标准的 JWT 格式')
     }
     const payloadBase64 = jwtParts[1]
+      .replace(/-/g, '+') // base64url -> base64
+      .replace(/_/g, '/')
 
     // 步骤3：Base64 补位（JWT 的 payload 可能省略 = 补位符，需补齐）
     const paddedPayload = payloadBase64.padEnd(payloadBase64.length + (4 - payloadBase64.length % 4) % 4, '=')
 
     // 步骤4：解码并转成 JSON 对象
-    const decodedStr = base64Decode(paddedPayload)
+    const decodedBinary = base64DecodeBinary(paddedPayload)
+    const decodedStr = decodeUtf8FromBinary(decodedBinary)
     return JSON.parse(decodedStr)
   } catch (error) {
     return null

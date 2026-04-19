@@ -9,6 +9,7 @@ import { UpdateChunkDto } from '../../modules/database/chunk/dto/updateChunk.dto
 import { DeleteChunkDto } from '../../modules/database/chunk/dto/deleteChunk.dto'
 import { SpeechResDto } from '../../modules/chat/dto/speechRes.dto'
 import { CompletionDto } from '../../modules/chat/dto/completion.dto'
+import { FollowupDto } from '../../modules/chat/dto/followup.dto'
 import { RecallDto } from '../../modules/database/dto/recall.dto'
 import type { AxiosResponse } from 'axios'
 
@@ -260,6 +261,28 @@ export class ExternalApiService {
       ),
     )
     return response.data
+  }
+
+  // Base 服务后续问题推荐
+  async followupSuggestions(followupData: FollowupDto & { history: any[] }): Promise<{ items: string[] }> {
+    const url = '/followup_suggestions'
+    const response = await lastValueFrom(
+      this.httpService.post(
+        url,
+        {
+          query: followupData.query,
+          chat_history: followupData.history || [],
+          limit: followupData.limit ?? 3,
+          model: followupData.model,
+        },
+        {
+          headers: {
+            'X-Client-App': 'backend',
+          },
+        },
+      ),
+    )
+    return response.data || { items: [] }
   }
 
   // Base 服务下载文档（PDF）接口：返回可读流

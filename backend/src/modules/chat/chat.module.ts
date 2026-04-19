@@ -14,6 +14,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { ChatMessageService } from './message/chatMessage.service'
 import { ChatMessageDAO } from './message/dao/chatMessage.dao'
 import { CollectionEntity } from '../database/entities/collection.entity'
+import { DocumentEntity } from '../database/document/entities/document.entity'
 
 @Module({
   imports: [
@@ -26,7 +27,7 @@ import { CollectionEntity } from '../database/entities/collection.entity'
       inject: [ConfigService],
     }),
     TypeOrmModule.forFeature([ChatSessionEntity, ChatMessageEntity]),
-    TypeOrmModule.forFeature([CollectionEntity], 'rag'),
+    TypeOrmModule.forFeature([CollectionEntity, DocumentEntity], 'rag'),
     AuthModule,
     ChatSessionModule,
     ChatMessageModule,

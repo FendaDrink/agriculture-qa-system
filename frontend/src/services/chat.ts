@@ -3,6 +3,19 @@ import { apiDelete, apiGet, apiPost } from './api'
 import { getAppSettings } from './settings'
 import { ChatMessage, ChatSession, CompletionPayload, FaqQuestionItem, UserProfile } from '@/types/chat'
 
+export interface QuickQuestionItem {
+  question: string
+  frequency?: number | null
+}
+
+export interface FollowupPayload {
+  sessionId: string
+  query?: string
+  history?: Array<{ sender: 0 | 1; content: string; extra?: Record<string, unknown> }>
+  limit?: number
+  model?: string
+}
+
 interface StreamState {
   buffer: string
   full: string
@@ -230,7 +243,18 @@ export const listFaqQuestions = async (limit = 20): Promise<FaqQuestionItem[]> =
   return data?.items || []
 }
 
-export const listQuickQuestions = async (limit = 4): Promise<string[]> => {
-  const items = await listFaqQuestions(limit)
-  return items.map((item) => item.question).filter(Boolean)
+export const listQuickQuestions = async (limit = 4): Promise<QuickQuestionItem[]> => {
+  const data = await apiGet<{ items: FaqQuestionItem[] }>('/faq/recommend', { limit })
+  const items = data?.items || []
+  return items
+    .map((item) => ({
+      question: item.question,
+      frequency: item.frequency ?? null,
+    }))
+    .filter((item) => !!item.question)
+}
+
+export const getFollowupSuggestions = async (payload: FollowupPayload): Promise<string[]> => {
+  const data = await apiPost<{ items: string[] }>('/chat/followup-suggestions', payload as any)
+  return Array.isArray(data?.items) ? data.items : []
 }
