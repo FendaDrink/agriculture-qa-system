@@ -20,4 +20,8 @@ export class CompletionDto {
   @IsArray()
   @IsOptional()
   history?: any
+
+  @IsArray()
+  @IsOptional()
+  contextChunks?: Array<{ content: string; score?: number; sourceCollectionId?: string }>
 }

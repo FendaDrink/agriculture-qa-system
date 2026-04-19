@@ -36,31 +36,41 @@
   backdrop-filter: blur(8px);
 }
 
-.faq-card-title {
+.faq-q {
   display: block;
-  font-size: 28px;
-  color: #1e4232;
-  font-weight: 600;
-}
-
-.faq-q,
-.faq-a {
-  display: block;
-  margin-top: 10px;
+  margin-top: 2px;
   line-height: 1.7;
   color: #2a4738;
   font-size: 24px;
 }
 
+.faq-card-foot {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.faq-source {
+  color: #6b8678;
+  font-size: 20px;
+}
+
 .faq-ask {
-  margin-top: 12px;
-  display: inline-block;
+  display: inline-flex;
   padding: 8px 16px;
   border-radius: 999px;
   background: linear-gradient(135deg, #0f6842, #138a56);
   color: #fff;
   font-size: 22px;
   box-shadow: 0 8px 16px rgba(17, 96, 62, 0.2);
+}
+
+.faq-empty {
+  padding: 40px 22px;
+  text-align: center;
+  color: #6b8678;
+  font-size: 23px;
 }
 
 @media screen and (max-width: 430px) {

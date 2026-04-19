@@ -21,6 +21,10 @@ export class UserEntity {
   @IsString()
   username: string
 
+  @Column({ comment: '所属城市', default: '湖北省' })
+  @IsString()
+  city: string
+
   @Column({ name: 'role_id', comment: '权限ID' })
   @JoinColumn({ name: 'id' })
   @IsInt()

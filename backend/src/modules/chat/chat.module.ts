@@ -13,6 +13,7 @@ import { HttpModule } from '@nestjs/axios'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { ChatMessageService } from './message/chatMessage.service'
 import { ChatMessageDAO } from './message/dao/chatMessage.dao'
+import { CollectionEntity } from '../database/entities/collection.entity'
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ChatMessageDAO } from './message/dao/chatMessage.dao'
       inject: [ConfigService],
     }),
     TypeOrmModule.forFeature([ChatSessionEntity, ChatMessageEntity]),
+    TypeOrmModule.forFeature([CollectionEntity], 'rag'),
     AuthModule,
     ChatSessionModule,
     ChatMessageModule,

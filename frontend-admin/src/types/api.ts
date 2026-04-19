@@ -2,6 +2,7 @@ export interface AuthTokenPayload {
   userId: string
   username: string
   roleId: number
+  city?: string
   exp?: number
   iat?: number
 }
@@ -10,12 +11,14 @@ export interface AuthUser {
   userId: string
   username: string
   roleId: number
+  city?: string
   token: string
 }
 
 export interface UserDto {
   id: string
   username: string
+  city: string
   roleId: number
   status: number
   createTime: string
@@ -25,6 +28,7 @@ export interface UserDto {
 export interface CollectionDto {
   id: string
   collectionName: string
+  city: string
   createBy: string
   createTime: string
   updateTime: string

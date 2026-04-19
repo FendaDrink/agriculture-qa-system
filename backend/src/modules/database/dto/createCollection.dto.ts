@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString } from 'class-validator'
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator'
 
 export class createCollectionDto {
   @IsNotEmpty()
@@ -8,4 +8,8 @@ export class createCollectionDto {
   @IsNotEmpty()
   @IsString()
   createBy: string
+
+  @IsOptional()
+  @IsString()
+  city?: string
 }

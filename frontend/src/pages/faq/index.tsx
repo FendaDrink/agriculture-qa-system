@@ -1,13 +1,22 @@
 import { ScrollView, Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import React from 'react'
-import { getFaqList } from '@/services/chat'
+import React, { useEffect, useState } from 'react'
+import { listFaqQuestions } from '@/services/chat'
+import { FaqQuestionItem } from '@/types/chat'
 import './index.scss'
 
 const PREFILL_KEY = 'agri:chat:prefill-question'
 
 const FaqPage = () => {
-  const faqList = getFaqList()
+  const [faqList, setFaqList] = useState<FaqQuestionItem[]>([])
+
+  useEffect(() => {
+    listFaqQuestions(30).then((list) => {
+      setFaqList(list)
+    }).catch(() => {
+      setFaqList([])
+    })
+  }, [])
 
   const askNow = (question: string) => {
     Taro.setStorageSync(PREFILL_KEY, question)
@@ -17,19 +26,24 @@ const FaqPage = () => {
   return (
     <View className='faq-page safe-shell'>
       <Text className='faq-title'>高频问题参考</Text>
-      <Text className='faq-desc'>点击“去提问”会把问题带到问答页直接发起咨询</Text>
+      <Text className='faq-desc'>根据真实提问自动统计，管理员也会手动维护推荐问题</Text>
 
       <ScrollView scrollY className='faq-scroll'>
-        {faqList.map((item) => (
+        {faqList.length > 0 ? faqList.map((item) => (
           <View key={item.id} className='faq-card'>
-            <Text className='faq-card-title'>{item.title}</Text>
-            <Text className='faq-q'>问：{item.question}</Text>
-            <Text className='faq-a'>答：{item.answer}</Text>
-            <View className='faq-ask' onClick={() => askNow(item.question)}>
-              <Text>去提问</Text>
+            <Text className='faq-q'>{item.question}</Text>
+            <View className='faq-card-foot'>
+              <Text className='faq-source'>{item.source === 'manual' ? '精选问题' : `高频提问${item.frequency ? ` (${item.frequency})` : ''}`}</Text>
+              <View className='faq-ask' onClick={() => askNow(item.question)}>
+                <Text>去提问</Text>
+              </View>
             </View>
           </View>
-        ))}
+        )) : (
+          <View className='faq-empty'>
+            <Text>暂无高频问题，欢迎去问答页发起你的第一个问题</Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   )

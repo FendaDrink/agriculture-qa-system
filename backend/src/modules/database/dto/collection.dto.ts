@@ -11,6 +11,10 @@ export class CollectionDto {
 
   @IsString()
   @IsNotEmpty()
+  city: string
+
+  @IsString()
+  @IsNotEmpty()
   createBy: string
 
   @IsDate()

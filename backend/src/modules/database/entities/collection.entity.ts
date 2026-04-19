@@ -14,6 +14,10 @@ export class CollectionEntity {
   @IsString()
   collectionName: string
 
+  @Column({ comment: '所属城市', default: '湖北省' })
+  @IsString()
+  city: string
+
   @Column({ name: 'create_by', comment: '创建人ID' })
   @IsString()
   createBy: string

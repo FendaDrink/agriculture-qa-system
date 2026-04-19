@@ -34,6 +34,7 @@ export class CollectionDAO {
     const {
       id,
       createBy,
+      city,
       collectionName,
       createTimeStart,
       createTimeEnd,
@@ -53,6 +54,10 @@ export class CollectionDAO {
 
     if (createBy) {
       where.createBy = Like(`%${createBy}%`)
+    }
+
+    if (city) {
+      where.city = city
     }
 
     if (createTimeStart && createTimeEnd) {

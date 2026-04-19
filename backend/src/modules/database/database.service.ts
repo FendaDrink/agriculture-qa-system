@@ -10,6 +10,12 @@ import { UpdateCollectionDto } from './dto/updateCollection.dto'
 import { ExternalApiService } from '../../common/api/externalApi.service'
 import { RecallDto } from './dto/recall.dto'
 
+interface RequestUser {
+  userId: string
+  roleId: number
+  city?: string
+}
+
 @Injectable()
 export class DatabaseService {
   constructor(
@@ -24,24 +30,43 @@ export class DatabaseService {
   /**
    * 获取所有向量库
    */
-  async findAllCollections(): Promise<CollectionDto[]> {
-    return this.collectionDAO.findAllCollections()
+  async findAllCollections(user: RequestUser): Promise<CollectionDto[]> {
+    if (user.roleId === 0) return this.collectionDAO.findAllCollections()
+    if (user.roleId === 1) {
+      return this.collectionDAO.findCollectionByConditions({ city: user.city || '湖北省' })
+    }
+    return this.collectionDAO.findCollectionByConditions({ createBy: user.userId })
   }
 
   /**
    * 获取符合条件的向量库
    */
-  async findCollectionsByCondition(collectionData: SearchCollectionDto): Promise<CollectionDto[]> {
-    return this.collectionDAO.findCollectionByConditions(collectionData)
+  async findCollectionsByCondition(user: RequestUser, collectionData: SearchCollectionDto): Promise<CollectionDto[]> {
+    const scoped = { ...collectionData }
+    if (user.roleId === 1) {
+      scoped.city = user.city || '湖北省'
+    }
+    if (user.roleId === 2) {
+      scoped.createBy = user.userId
+    }
+    return this.collectionDAO.findCollectionByConditions(scoped)
   }
 
   /**
    * 创建向量库
    */
-  async createCollection(createCollectionData: createCollectionDto): Promise<CollectionDto> {
+  async createCollection(user: RequestUser, createCollectionData: createCollectionDto): Promise<CollectionDto> {
+    if (user.roleId !== 0 && user.roleId !== 1) {
+      throw new HttpException('无权限创建向量库', HttpStatus.FORBIDDEN)
+    }
+    const city = user.roleId === 0
+      ? (createCollectionData.city || user.city || '湖北省')
+      : (user.city || '湖北省')
     return this.dataSource.transaction(async (manager) => {
       const collection = {
         ...createCollectionData,
+        city,
+        createBy: user.userId,
         id: `${uuidV4().slice(0, 8)}_${createCollectionData.collectionName}`,
       }
       const createdCollection = await this.collectionDAO.createCollection(collection, manager)
@@ -53,7 +78,10 @@ export class DatabaseService {
   /**
    * 更新向量库信息
    */
-  async updateCollection(collectionData: UpdateCollectionDto): Promise<CollectionDto> {
+  async updateCollection(user: RequestUser, collectionData: UpdateCollectionDto): Promise<CollectionDto> {
+    if (user.roleId !== 0 && user.roleId !== 1) {
+      throw new HttpException('无权限修改向量库', HttpStatus.FORBIDDEN)
+    }
     return this.dataSource.transaction(async (manager) => {
       // 1. 校验向量库是否存在
       const col = await this.collectionDAO.findCollectionByConditions({
@@ -62,10 +90,15 @@ export class DatabaseService {
       if (!col || !col.length) {
         throw new HttpException('该向量库不存在', HttpStatus.NOT_FOUND)
       }
+      if (user.roleId === 1 && col[0].city !== (user.city || '湖北省')) {
+        throw new HttpException('无权限修改其他城市向量库', HttpStatus.FORBIDDEN)
+      }
 
       // 2. 更新向量库信息
       const newCollectionData = {
         ...collectionData,
+        createBy: col[0].createBy,
+        city: user.roleId === 0 ? (collectionData.city || col[0].city) : col[0].city,
       }
       const collection = await this.collectionDAO.updateCollection(newCollectionData, manager)
 
@@ -76,7 +109,10 @@ export class DatabaseService {
   /**
    * 删除向量库
    */
-  async deleteCollection(id: string): Promise<any> {
+  async deleteCollection(user: RequestUser, id: string): Promise<any> {
+    if (user.roleId !== 0 && user.roleId !== 1) {
+      throw new HttpException('无权限删除向量库', HttpStatus.FORBIDDEN)
+    }
     return this.dataSource.transaction(async (manager) => {
       // 1. 校验向量库是否存在
       const col = await this.collectionDAO.findCollectionByConditions({
@@ -84,6 +120,9 @@ export class DatabaseService {
       })
       if (!col || !col.length) {
         throw new HttpException('该向量库不存在', HttpStatus.NOT_FOUND)
+      }
+      if (user.roleId === 1 && col[0].city !== (user.city || '湖北省')) {
+        throw new HttpException('无权限删除其他城市向量库', HttpStatus.FORBIDDEN)
       }
 
       // 2. 删除向量库

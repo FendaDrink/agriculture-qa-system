@@ -35,8 +35,8 @@ export class DatabaseController {
    */
   @Get()
   @UseGuards(AuthGuard)
-  async findAllCollections(): Promise<CollectionDto[]> {
-    return this.databaseService.findAllCollections()
+  async findAllCollections(@Req() req: any): Promise<CollectionDto[]> {
+    return this.databaseService.findAllCollections(req.user)
   }
 
   /**
@@ -44,8 +44,8 @@ export class DatabaseController {
    */
   @Get('/search')
   @UseGuards(AuthGuard)
-  async findCollectionsByConditions(@Query() data: SearchCollectionDto): Promise<CollectionDto[]> {
-    return this.databaseService.findCollectionsByCondition(data)
+  async findCollectionsByConditions(@Query() data: SearchCollectionDto, @Req() req: any): Promise<CollectionDto[]> {
+    return this.databaseService.findCollectionsByCondition(req.user, data)
   }
 
   /**
@@ -53,8 +53,8 @@ export class DatabaseController {
    */
   @Post()
   @UseGuards(AuthGuard)
-  async createCollection(@Body() data: createCollectionDto): Promise<CollectionDto> {
-    return this.databaseService.createCollection(data)
+  async createCollection(@Body() data: createCollectionDto, @Req() req: any): Promise<CollectionDto> {
+    return this.databaseService.createCollection(req.user, data)
   }
 
   /**
@@ -62,8 +62,8 @@ export class DatabaseController {
    */
   @Patch()
   @UseGuards(AuthGuard)
-  async updateCollection(@Body() data: UpdateCollectionDto): Promise<CollectionDto> {
-    return this.databaseService.updateCollection(data)
+  async updateCollection(@Body() data: UpdateCollectionDto, @Req() req: any): Promise<CollectionDto> {
+    return this.databaseService.updateCollection(req.user, data)
   }
 
   /**
@@ -71,8 +71,8 @@ export class DatabaseController {
    */
   @Delete()
   @UseGuards(AuthGuard)
-  async deleteCollection(@Query('collectionId') id: string): Promise<void> {
-    return this.databaseService.deleteCollection(id)
+  async deleteCollection(@Query('collectionId') id: string, @Req() req: any): Promise<void> {
+    return this.databaseService.deleteCollection(req.user, id)
   }
 
   /**

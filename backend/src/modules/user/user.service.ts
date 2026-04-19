@@ -53,6 +53,9 @@ export class UserService {
       if (!userData.username) {
         userData.username = userData.id
       }
+      if (!userData.city) {
+        userData.city = '湖北省'
+      }
 
       if (!userData.password) {
         throw new HttpException('密码不能为空', HttpStatus.BAD_REQUEST)

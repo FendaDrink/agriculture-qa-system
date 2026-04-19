@@ -7,6 +7,7 @@ import ChunkList from '../pages/collections/ChunkList'
 import UserList from '../pages/users/UserList'
 import Recall from '../pages/Recall'
 import LogList from '../pages/logs/LogList'
+import FaqManage from '../pages/faqs/FaqManage'
 import { useAuth } from '../hooks/useAuth'
 
 const RequireAuth: React.FC = () => {
@@ -41,6 +42,7 @@ const AppRoutes = () => (
         <Route element={<RequireRole roles={[0, 1]} />}>
           <Route path="/users" element={<UserList />} />
           <Route path="/logs" element={<LogList />} />
+          <Route path="/faqs" element={<FaqManage />} />
         </Route>
       </Route>
     </Route>

@@ -14,6 +14,10 @@ export class SearchCollectionDto {
   createBy?: string
 
   @IsOptional()
+  @IsString()
+  city?: string
+
+  @IsOptional()
   @IsDate()
   createTimeStart?: Date
 

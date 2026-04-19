@@ -34,6 +34,7 @@ export interface CompletionPayload {
 export interface UserProfile {
   id: string
   username: string
+  city?: string
   roleId: number
   status: number
   createTime: string
@@ -47,4 +48,12 @@ export interface AppSettings {
   model: string
   collectionId: string
   username: string
+}
+
+export interface FaqQuestionItem {
+  id: string
+  question: string
+  source: 'manual' | 'auto'
+  frequency?: number | null
+  latestAskedAt?: string | null
 }

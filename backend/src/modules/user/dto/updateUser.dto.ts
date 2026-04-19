@@ -9,6 +9,10 @@ export class UpdateUserDto {
   @IsOptional()
   username?: string
 
+  @IsString()
+  @IsOptional()
+  city?: string
+
   @IsInt()
   @IsOptional()
   roleId?: number

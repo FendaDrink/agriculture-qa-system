@@ -20,6 +20,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       userId: payload.userId,
       username: payload.username,
       roleId: payload.roleId,
+      city: payload.city,
       token,
     }
     saveAuthUser(authUser)

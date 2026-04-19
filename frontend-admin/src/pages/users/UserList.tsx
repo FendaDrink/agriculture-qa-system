@@ -30,6 +30,27 @@ const statusOptions = [
   { label: '禁用', value: 1 },
 ]
 
+const cityOptions = [
+  { label: '武汉', value: '武汉' },
+  { label: '黄石', value: '黄石' },
+  { label: '十堰', value: '十堰' },
+  { label: '宜昌', value: '宜昌' },
+  { label: '襄阳', value: '襄阳' },
+  { label: '鄂州', value: '鄂州' },
+  { label: '荆门', value: '荆门' },
+  { label: '孝感', value: '孝感' },
+  { label: '荆州', value: '荆州' },
+  { label: '黄冈', value: '黄冈' },
+  { label: '咸宁', value: '咸宁' },
+  { label: '随州', value: '随州' },
+  { label: '恩施', value: '恩施' },
+  { label: '仙桃', value: '仙桃' },
+  { label: '潜江', value: '潜江' },
+  { label: '天门', value: '天门' },
+  { label: '神农架', value: '神农架' },
+  { label: '湖北省（公共）', value: '湖北省' },
+]
+
 const UserList: React.FC = () => {
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
@@ -39,6 +60,7 @@ const UserList: React.FC = () => {
   const [keyword, setKeyword] = useState('')
   const [roleId, setRoleId] = useState<number | undefined>(undefined)
   const [status, setStatus] = useState<number | undefined>(undefined)
+  const [city, setCity] = useState<string | undefined>(undefined)
 
   const [createForm] = Form.useForm()
   const [editForm] = Form.useForm()
@@ -52,12 +74,16 @@ const UserList: React.FC = () => {
   const filteredUsers = useMemo(() => {
     const normalized = keyword.trim().toLowerCase()
     const list = normalized
-      ? data.filter((u) => u.id.toLowerCase().includes(normalized) || u.username.toLowerCase().includes(normalized))
+      ? data.filter((u) =>
+          u.id.toLowerCase().includes(normalized) ||
+          u.username.toLowerCase().includes(normalized) ||
+          (u.city || '').toLowerCase().includes(normalized))
       : data
     const byRole = roleId === undefined ? list : list.filter((u) => u.roleId === roleId)
     const byStatus = status === undefined ? byRole : byRole.filter((u) => u.status === status)
-    return [...byStatus].sort((a, b) => dayjs(b.updateTime).valueOf() - dayjs(a.updateTime).valueOf())
-  }, [data, keyword, roleId, status])
+    const byCity = city === undefined ? byStatus : byStatus.filter((u) => u.city === city)
+    return [...byCity].sort((a, b) => dayjs(b.updateTime).valueOf() - dayjs(a.updateTime).valueOf())
+  }, [data, keyword, roleId, status, city])
 
   const createMutation = useMutation({
     mutationFn: createUser,
@@ -120,6 +146,12 @@ const UserList: React.FC = () => {
       render: (value: number) => roleOptions.find((item) => item.value === value)?.label,
     },
     {
+      title: '城市',
+      dataIndex: 'city',
+      key: 'city',
+      render: (value: string) => value || '-',
+    },
+    {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
@@ -142,6 +174,7 @@ const UserList: React.FC = () => {
               setSelectedUser(record)
               editForm.setFieldsValue({
                 username: record.username,
+                city: record.city,
                 roleId: record.roleId,
                 status: record.status,
               })
@@ -178,7 +211,7 @@ const UserList: React.FC = () => {
           <Space wrap>
             <Input.Search
               allowClear
-              placeholder="搜索手机号 / 用户名"
+              placeholder="搜索手机号 / 用户名 / 城市"
               style={{ width: 240 }}
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
@@ -198,6 +231,14 @@ const UserList: React.FC = () => {
               options={statusOptions}
               value={status}
               onChange={(v) => setStatus(v)}
+            />
+            <Select
+              allowClear
+              placeholder="城市"
+              style={{ width: 170 }}
+              options={cityOptions}
+              value={city}
+              onChange={(v) => setCity(v)}
             />
             <Button icon={<ReloadOutlined />} onClick={() => queryClient.invalidateQueries({ queryKey: ['users'] })}>
               刷新
@@ -248,6 +289,13 @@ const UserList: React.FC = () => {
             rules={[{ required: true, message: '请输入用户名' }]}
           >
             <Input placeholder="请输入用户名" />
+          </Form.Item>
+          <Form.Item
+            label="所属城市"
+            name="city"
+            rules={[{ required: true, message: '请选择所属城市' }]}
+          >
+            <Select options={cityOptions} placeholder="请选择所属城市" />
           </Form.Item>
           <Form.Item
             label="初始密码"
@@ -306,6 +354,13 @@ const UserList: React.FC = () => {
             rules={[{ required: true, message: '请输入用户名' }]}
           >
             <Input placeholder="请输入用户名" />
+          </Form.Item>
+          <Form.Item
+            label="所属城市"
+            name="city"
+            rules={[{ required: true, message: '请选择所属城市' }]}
+          >
+            <Select options={cityOptions} placeholder="请选择所属城市" />
           </Form.Item>
           <Form.Item
             label="角色"

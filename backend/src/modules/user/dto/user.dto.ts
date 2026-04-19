@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsInt, IsPhoneNumber, IsOptional, IsDate } from 'class-validator'
+import { IsNotEmpty, IsInt, IsPhoneNumber, IsOptional, IsDate, IsString } from 'class-validator'
 
 export class UserDto {
   @IsPhoneNumber('CN')
@@ -6,7 +6,12 @@ export class UserDto {
   id: string
 
   @IsNotEmpty()
+  @IsString()
   username: string
+
+  @IsNotEmpty()
+  @IsString()
+  city: string
 
   @IsOptional()
   password?: string

@@ -40,6 +40,7 @@ class QueryRequest(BaseModel):
     model: str
     collection_id: str
     chat_history: Optional[List[ChatMessage]] = None
+    context_chunks: Optional[List[str]] = None
 
 
 class AddRequest(BaseModel):
@@ -690,9 +691,6 @@ async def create_completion(request: QueryRequest):
             chat_history.append(f"{'问' if chat['sender'] else '答'}：{chat['content']}")
     chat_history = '\n'.join(chat_history)
 
-    if not collection_id:
-        collection_id = "test"
-    vector_db = MyVectorDBConnector(collection_id, get_embeddings)
     try:
         query = request.query
         model = request.model
@@ -700,11 +698,6 @@ async def create_completion(request: QueryRequest):
             model = "gpt-3.5-turbo-1106"
         if not query:
             raise HTTPException(status_code=400, detail="缺少query参数")
-
-        # 查询向量数据库
-        results = vector_db.search(query, 5)
-        if not results['documents']:
-            raise HTTPException(status_code=404, detail="未找到相关分段")
 
         # 构建提示词模板
         system_prompt = """
@@ -718,12 +711,24 @@ async def create_completion(request: QueryRequest):
         当用户询问的内容明确，但已有知识库或者已知信息中无法对问题进行回答，请直接回答“很抱歉，我目前还无法回答您提出的问题”。
         """
 
-        # 查到的相关分段
-        info = results['documents'][0]
-        if isinstance(info, list):  # 如果是 list 则进行合并
-            info_text = "\n".join(info)
+        context_chunks = request.context_chunks or []
+        if context_chunks:
+            info_text = "\n".join([str(item) for item in context_chunks if str(item).strip()])
         else:
-            info_text = info
+            if not collection_id:
+                collection_id = "test"
+            vector_db = MyVectorDBConnector(collection_id, get_embeddings)
+            # 查询向量数据库
+            results = vector_db.search(query, 5)
+            if not results['documents']:
+                raise HTTPException(status_code=404, detail="未找到相关分段")
+
+            # 查到的相关分段
+            info = results['documents'][0]
+            if isinstance(info, list):  # 如果是 list 则进行合并
+                info_text = "\n".join(info)
+            else:
+                info_text = info
 
         message = [
             {"role": "system", "content": system_prompt},

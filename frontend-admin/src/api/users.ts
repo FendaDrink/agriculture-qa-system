@@ -4,6 +4,7 @@ import type { UserDto } from '../types/api'
 export interface CreateUserParams {
   id: string
   username: string
+  city: string
   password: string
   roleId: number
   status: number
@@ -12,6 +13,7 @@ export interface CreateUserParams {
 export interface UpdateUserParams {
   id: string
   username?: string
+  city?: string
   roleId?: number
   status?: number
 }

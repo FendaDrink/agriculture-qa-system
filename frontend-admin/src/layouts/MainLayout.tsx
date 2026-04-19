@@ -5,6 +5,7 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  QuestionCircleOutlined,
   SearchOutlined,
   TeamOutlined,
   UserOutlined,
@@ -45,6 +46,11 @@ const MainLayout: React.FC = () => {
         key: '/logs',
         icon: <FileSearchOutlined />,
         label: '日志审计',
+      })
+      base.push({
+        key: '/faqs',
+        icon: <QuestionCircleOutlined />,
+        label: '常见问题',
       })
     }
 

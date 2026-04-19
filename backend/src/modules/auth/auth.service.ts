@@ -36,7 +36,12 @@ export class AuthService {
     }
 
     // 3. 组装 payload
-    const payload = { userId: userPwd.userId, roleId: userInfo.roleId, username: userInfo.username }
+    const payload = {
+      userId: userPwd.userId,
+      roleId: userInfo.roleId,
+      username: userInfo.username,
+      city: userInfo.city,
+    }
 
     return {
       token: this.jwtService.sign(payload),

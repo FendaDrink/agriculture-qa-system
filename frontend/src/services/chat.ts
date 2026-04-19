@@ -1,7 +1,7 @@
 import Taro from '@tarojs/taro'
 import { apiDelete, apiGet, apiPost } from './api'
 import { getAppSettings } from './settings'
-import { ChatMessage, ChatSession, CompletionPayload, UserProfile } from '@/types/chat'
+import { ChatMessage, ChatSession, CompletionPayload, FaqQuestionItem, UserProfile } from '@/types/chat'
 
 interface StreamState {
   buffer: string
@@ -143,6 +143,9 @@ export const completion = async (payload: CompletionPayload): Promise<string> =>
 export const streamCompletion = async (
   payload: CompletionPayload,
   onDelta?: (delta: string, full: string) => void,
+  options?: {
+    onTaskCreated?: (task: Taro.RequestTask<any>) => void
+  },
 ): Promise<string> => {
   const settings = getAppSettings()
   const baseUrl = settings.baseUrl.trim().replace(/\/$/, '')
@@ -159,6 +162,7 @@ export const streamCompletion = async (
       enableChunked: true,
       header: {
         'Content-Type': 'application/json',
+        'X-Client-App': 'frontend',
         Authorization: token ? `Bearer ${token}` : '',
       },
       success: (res) => {
@@ -177,6 +181,7 @@ export const streamCompletion = async (
       },
       fail: (err) => reject(err),
     })
+    options?.onTaskCreated?.(requestTask)
 
     requestTask?.onChunkReceived?.((event: any) => {
       const text = decodeResponseText(event?.data)
@@ -185,33 +190,47 @@ export const streamCompletion = async (
   })
 }
 
-export const getQuickQuestions = (): string[] => [
-  '当前玉米叶片发黄，可能是什么原因？',
-  '小麦返青期施肥方案怎么定？',
-  '番茄晚疫病如何预防？',
-  '近期阴雨天，蔬菜大棚该怎么管理？',
-]
+export const speechRecognizeByFile = async (tempFilePath: string, model = 'whisper-1') => {
+  const settings = getAppSettings()
+  const baseUrl = settings.baseUrl.trim().replace(/\/$/, '')
+  const token = settings.token.trim()
 
-export const getFaqList = () => [
-  {
-    id: 'faq-1',
-    title: '玉米黄叶诊断思路',
-    question: '玉米叶片发黄的常见原因有哪些，如何快速排查？',
-    answer:
-      '优先看分布和部位：整田普遍发黄常见缺肥或渍害；局部点片状发黄要排查病虫害。再结合根系、土壤湿度和近期施肥记录做判断。',
-  },
-  {
-    id: 'faq-2',
-    title: '小麦返青管理',
-    question: '小麦返青期怎样施肥更稳妥？',
-    answer:
-      '返青期强调“促弱控旺”。弱苗田可适度前移追肥，旺苗田适度后移并控氮，关注倒春寒前后温度变化，避免一次性重施。',
-  },
-  {
-    id: 'faq-3',
-    title: '番茄晚疫病预防',
-    question: '番茄晚疫病怎么做预防？',
-    answer:
-      '优先改善通风降湿，雨前做好保护性喷药，发病初期及时轮换不同作用机制药剂，避免长期单一药剂。',
-  },
-]
+  return await new Promise<string>((resolve, reject) => {
+    Taro.uploadFile({
+      url: `${baseUrl}/chat/speech?model=${encodeURIComponent(model)}`,
+      filePath: tempFilePath,
+      name: 'file',
+      header: {
+        Authorization: token ? `Bearer ${token}` : '',
+        'X-Client-App': 'frontend',
+      },
+      success: (res) => {
+        if (res.statusCode >= 400) {
+          reject(new Error(`语音识别失败：${res.statusCode}`))
+          return
+        }
+        try {
+          const parsed = JSON.parse(res.data || '{}') as any
+          if (parsed?.code !== 200) {
+            reject(new Error(parsed?.message || '语音识别失败'))
+            return
+          }
+          resolve((parsed?.data?.text || '').trim())
+        } catch (error) {
+          reject(new Error('语音识别返回格式异常'))
+        }
+      },
+      fail: (err) => reject(err),
+    })
+  })
+}
+
+export const listFaqQuestions = async (limit = 20): Promise<FaqQuestionItem[]> => {
+  const data = await apiGet<{ items: FaqQuestionItem[] }>('/faq', { limit })
+  return data?.items || []
+}
+
+export const listQuickQuestions = async (limit = 4): Promise<string[]> => {
+  const items = await listFaqQuestions(limit)
+  return items.map((item) => item.question).filter(Boolean)
+}
