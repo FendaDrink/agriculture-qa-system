@@ -67,7 +67,8 @@ export class DatabaseService {
         ...createCollectionData,
         city,
         createBy: user.userId,
-        id: `${uuidV4().slice(0, 8)}_${createCollectionData.collectionName}`,
+        // Keep collection id ASCII-only to satisfy downstream vector DB name constraints.
+        id: `kb_${uuidV4().replace(/-/g, '').slice(0, 20)}`,
       }
       const createdCollection = await this.collectionDAO.createCollection(collection, manager)
 

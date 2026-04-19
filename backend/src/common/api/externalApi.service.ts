@@ -33,7 +33,45 @@ export class ExternalApiService {
     if (documentData.fileName) {
       formData.append('file_name', documentData.fileName)
     }
+    if (documentData.chunkRule) {
+      formData.append('chunk_rule', documentData.chunkRule)
+    }
+    if (typeof documentData.chunkSize === 'number') {
+      formData.append('chunk_size', String(documentData.chunkSize))
+    }
+    if (typeof documentData.chunkOverlap === 'number') {
+      formData.append('chunk_overlap', String(documentData.chunkOverlap))
+    }
+    if (typeof documentData.minChunkSize === 'number') {
+      formData.append('min_chunk_size', String(documentData.minChunkSize))
+    }
 
+    formData.append('file', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+    })
+    const headers = {
+      ...formData.getHeaders(),
+      'X-Client-App': 'backend',
+    }
+
+    const response = await lastValueFrom(this.httpService.post(url, formData, { headers }))
+    return response.data
+  }
+
+  // Base 服务文档分段预览（仅预览，不入库）
+  async previewDocChunks(documentData: UploadDocDto, file: Express.Multer.File) {
+    const url = '/preview_chunks'
+    const formData = new FormData()
+    formData.append('user', documentData.user)
+    formData.append('collection_id', documentData.collectionId)
+    formData.append('chunk_rule', documentData.chunkRule || 'semantic_hybrid')
+    formData.append('chunk_size', String(documentData.chunkSize ?? 500))
+    formData.append('chunk_overlap', String(documentData.chunkOverlap ?? 100))
+    formData.append('min_chunk_size', String(documentData.minChunkSize ?? 80))
+    if (documentData.fileName) {
+      formData.append('file_name', documentData.fileName)
+    }
     formData.append('file', file.buffer, {
       filename: file.originalname,
       contentType: file.mimetype,

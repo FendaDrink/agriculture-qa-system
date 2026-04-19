@@ -4,6 +4,7 @@ import uuid
 import mysql.connector
 import json
 import traceback
+import re
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -135,35 +136,139 @@ def get_embeddings(texts, model="text-embedding-3-small"):
     return [x.embedding for x in data]
 
 
-# PDF 文件加载器
-class PDFFileLoader:
-    def __init__(self, file_path: str):
-        self.paragraphs = self.extract_text_from_pdf(file_path)
+# PDF 文本提取与分段
+def extract_pdf_text(filename, page_numbers=None):
+    full_text = ''
+    for i, page_layout in enumerate(extract_pages(filename)):
+        if page_numbers is not None and i not in page_numbers:
+            continue
+        for element in page_layout:
+            if isinstance(element, LTTextContainer):
+                full_text += element.get_text() + '\n'
+    return full_text
 
-    def get_paragraphs(self):
-        return self.paragraphs
 
-    def extract_text_from_pdf(self, filename, page_numbers=None):
-        paragraphs = []
-        buffer = ''
-        full_text = ''
-        for i, page_layout in enumerate(extract_pages(filename)):
-            if page_numbers is not None and i not in page_numbers:
-                continue
-            for element in page_layout:
-                if isinstance(element, LTTextContainer):
-                    full_text += element.get_text() + '\n'
+def normalize_text(text: str):
+    text = re.sub(r'[ \t]+', ' ', text or '')
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
-        lines = full_text.split('。')
 
-        for text in lines:
-            buffer = text.replace('\n', ' ').replace(' ', '')
-            if buffer:
-                paragraphs.append(buffer)
-                buffer = ''
-        if buffer:
-            paragraphs.append(buffer)
-        return list(set(paragraphs))
+def split_sentences(text: str):
+    normalized = normalize_text(text)
+    if not normalized:
+        return []
+    raw = re.split(r'(?<=[。！？；;.!?])\s*', normalized)
+    return [x.strip() for x in raw if x and x.strip()]
+
+
+def chunk_by_fixed(text: str, chunk_size=500, overlap=100):
+    normalized = normalize_text(text)
+    if not normalized:
+        return []
+    step = max(1, chunk_size - overlap)
+    chunks = []
+    start = 0
+    while start < len(normalized):
+        piece = normalized[start:start + chunk_size].strip()
+        if piece:
+            chunks.append(piece)
+        start += step
+    return chunks
+
+
+def chunk_by_sentence_pack(text: str, chunk_size=500, overlap=100):
+    sentences = split_sentences(text)
+    if not sentences:
+        return []
+
+    chunks = []
+    current = ''
+    for sentence in sentences:
+        if len(current) + len(sentence) <= chunk_size:
+            current += sentence
+        else:
+            if current:
+                chunks.append(current)
+            current = sentence
+    if current:
+        chunks.append(current)
+
+    if overlap <= 0 or len(chunks) <= 1:
+        return chunks
+
+    merged = [chunks[0]]
+    for i in range(1, len(chunks)):
+        prev_tail = chunks[i - 1][-overlap:] if len(chunks[i - 1]) > overlap else chunks[i - 1]
+        merged.append((prev_tail + chunks[i]).strip())
+    return merged
+
+
+def chunk_by_semantic_hybrid(text: str, chunk_size=500, overlap=100):
+    blocks = [b.strip() for b in re.split(r'\n\s*\n', normalize_text(text)) if b and b.strip()]
+    if not blocks:
+        return []
+    chunks = []
+    for block in blocks:
+        if len(block) <= chunk_size:
+            chunks.append(block)
+            continue
+        chunks.extend(chunk_by_sentence_pack(block, chunk_size=chunk_size, overlap=overlap))
+    return chunks
+
+
+def chunk_by_title_structure(text: str, chunk_size=500, overlap=80):
+    lines = [line.strip() for line in normalize_text(text).split('\n') if line.strip()]
+    sections = []
+    current = []
+    title_pattern = re.compile(r'^(第[一二三四五六七八九十百]+[章节部分]|[一二三四五六七八九十]+[、.])')
+    for line in lines:
+        if title_pattern.search(line):
+            if current:
+                sections.append('\n'.join(current))
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        sections.append('\n'.join(current))
+    if not sections:
+        return chunk_by_semantic_hybrid(text, chunk_size=chunk_size, overlap=overlap)
+
+    chunks = []
+    for section in sections:
+        if len(section) <= chunk_size:
+            chunks.append(section)
+        else:
+            chunks.extend(chunk_by_sentence_pack(section, chunk_size=chunk_size, overlap=overlap))
+    return chunks
+
+
+def build_chunks(text: str, chunk_rule='semantic_hybrid', chunk_size=500, chunk_overlap=100, min_chunk_size=80):
+    rule = (chunk_rule or 'semantic_hybrid').strip().lower()
+    chunk_size = int(chunk_size or 500)
+    chunk_overlap = int(chunk_overlap or 100)
+    min_chunk_size = int(min_chunk_size or 80)
+
+    if rule == 'sentence_pack':
+        chunks = chunk_by_sentence_pack(text, chunk_size=chunk_size, overlap=chunk_overlap)
+    elif rule == 'fixed_window':
+        chunks = chunk_by_fixed(text, chunk_size=chunk_size, overlap=chunk_overlap)
+    elif rule == 'title_structure':
+        chunks = chunk_by_title_structure(text, chunk_size=chunk_size, overlap=chunk_overlap)
+    else:
+        chunks = chunk_by_semantic_hybrid(text, chunk_size=chunk_size, overlap=chunk_overlap)
+
+    cleaned = []
+    seen = set()
+    for chunk in chunks:
+        normalized = chunk.strip()
+        if len(normalized) < min_chunk_size:
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        cleaned.append(normalized)
+    return cleaned
 
 
 # MySQL数据库连接器
@@ -200,9 +305,23 @@ class MySQLConnector:
 
 class MyVectorDBConnector:
     def __init__(self, collection_id, embedding_fn):
-        chroma_client = chromadb.PersistentClient(path=f"./chromaDB/{collection_id}")
-        self.collection = chroma_client.get_or_create_collection(name=collection_id)
+        safe_collection_id = self._to_safe_collection_id(collection_id)
+        chroma_client = chromadb.PersistentClient(path=f"./chromaDB/{safe_collection_id}")
+        self.collection = chroma_client.get_or_create_collection(name=safe_collection_id)
         self.embedding_fn = embedding_fn
+
+    @staticmethod
+    def _to_safe_collection_id(collection_id: str):
+        raw = (collection_id or "").strip()
+        if not raw:
+            return "kb_default"
+        if (
+            3 <= len(raw) <= 512
+            and re.match(r'^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$', raw)
+        ):
+            return raw
+        digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:24]
+        return f"kb_{digest}"
 
     # 批量embedding并新增分段
     def add_chunk(self, documents, document_id, user):
@@ -399,12 +518,78 @@ async def download_document(collection_id: str, file_hash: str):
     return FileResponse(file_path, media_type="application/pdf", headers={"Cache-Control": "no-store"})
 
 
+@app.post("/preview_chunks")
+async def preview_chunks(
+    collection_id: str = Form(...),
+    user: str = Form(...),
+    file_name: str = Form(""),
+    chunk_rule: str = Form("semantic_hybrid"),
+    chunk_size: int = Form(500),
+    chunk_overlap: int = Form(100),
+    min_chunk_size: int = Form(80),
+    file: UploadFile = File(...),
+):
+    if not collection_id:
+        raise HTTPException(status_code=400, detail="collection_id 不能为空")
+    if not user:
+        raise HTTPException(status_code=400, detail="user 不能为空")
+    if not file:
+        raise HTTPException(status_code=400, detail="请上传文件")
+
+    ext = os.path.splitext(file.filename)[1] or ".pdf"
+    tmp_dir = "./files/_preview_tmp"
+    os.makedirs(tmp_dir, exist_ok=True)
+    tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4().hex}{ext}")
+    try:
+        with open(tmp_path, "wb") as f:
+            while content := await file.read(1024 * 1024):
+                f.write(content)
+
+        raw_text = extract_pdf_text(tmp_path)
+        chunks = build_chunks(
+            raw_text,
+            chunk_rule=chunk_rule,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            min_chunk_size=min_chunk_size,
+        )
+        if not chunks:
+            raise HTTPException(status_code=400, detail="根据当前分段策略未生成有效分段，请调整参数")
+
+        lengths = [len(c) for c in chunks]
+        return {
+            "status": "ok",
+            "summary": {
+                "file_name": file_name or file.filename,
+                "chunk_rule": chunk_rule,
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "min_chunk_size": min_chunk_size,
+                "total_chunks": len(chunks),
+                "avg_length": int(sum(lengths) / len(lengths)) if lengths else 0,
+                "min_length": min(lengths) if lengths else 0,
+                "max_length": max(lengths) if lengths else 0,
+            },
+            "preview_chunks": chunks[:10],
+        }
+    finally:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
+
+
 # 上传文档并新增分段
 @app.post("/upload")
 async def upload_and_embed_file(
     collection_id: str = Form(...),
     user: str = Form(...),
-    file_name: str = Form(...),
+    file_name: str = Form(""),
+    chunk_rule: str = Form("semantic_hybrid"),
+    chunk_size: int = Form(500),
+    chunk_overlap: int = Form(100),
+    min_chunk_size: int = Form(80),
     file: UploadFile = File(...)
 ):
     if not collection_id:
@@ -448,8 +633,14 @@ async def upload_and_embed_file(
 
         # 处理PDF文件并生成embedding
         try:
-            pdf_loader = PDFFileLoader(file_path)
-            paragraphs = pdf_loader.get_paragraphs()
+            raw_text = extract_pdf_text(file_path)
+            paragraphs = build_chunks(
+                raw_text,
+                chunk_rule=chunk_rule,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                min_chunk_size=min_chunk_size,
+            )
             if not paragraphs:
                 os.remove(file_path)
                 raise HTTPException(status_code=400, detail="PDF文件内容为空")
@@ -492,7 +683,8 @@ async def upload_and_embed_file(
                 "message": "文件上传并处理成功",
                 "file_id": new_file_hash,
                 "file_hash": unique_filename,
-                "paragraph_count": len(paragraphs)
+                "paragraph_count": len(paragraphs),
+                "chunk_rule": chunk_rule,
             }
         except Exception as e:
             os.remove(file_path)
@@ -597,11 +789,12 @@ async def delete_document(collection_id: str, document_id: str, file_hash: str):
 async def delete_collection(collection_id: str):
     if not collection_id:
         raise HTTPException(status_code=400, detail="缺少必要参数")
+    safe_collection_id = MyVectorDBConnector._to_safe_collection_id(collection_id)
     # 判断向量库路径是否存在
-    if not os.path.exists(f"./chromaDB/{collection_id}"):
+    if not os.path.exists(f"./chromaDB/{safe_collection_id}"):
         raise HTTPException(404, detail="向量库不存在")
     try:
-        os.system(f"rm -rf ./chromaDB/{collection_id}")
+        os.system(f"rm -rf ./chromaDB/{safe_collection_id}")
         # 判断向量库存放文件路径是否存在
         if os.path.exists(f"./files/{collection_id}"):
             os.system(f"rm -rf ./files/{collection_id}")

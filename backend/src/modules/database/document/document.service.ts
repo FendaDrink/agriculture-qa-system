@@ -51,10 +51,39 @@ export class DocumentService {
     newDocData.user = documentData.user
     newDocData.fileName = fileName
     newDocData.collectionId = documentData.collectionId
+    newDocData.chunkRule = documentData.chunkRule || 'semantic_hybrid'
+    newDocData.chunkSize = documentData.chunkSize
+    newDocData.chunkOverlap = documentData.chunkOverlap
+    newDocData.minChunkSize = documentData.minChunkSize
     try {
       return await this.externalApiService.uploadDoc(newDocData, file)
     } catch (e) {
       throw new HttpException('上传失败，请稍后再试', HttpStatus.NOT_IMPLEMENTED)
+    }
+  }
+
+  /**
+   * 预览分段（仅预览，不入库）
+   */
+  async previewDocChunks(documentData: UploadDocDto, file: Express.Multer.File): Promise<any> {
+    if (!['application/pdf'].includes(file.mimetype)) {
+      throw new BadRequestException('类型错误，文件必须为PDF')
+    }
+    if (!documentData.user || !documentData.collectionId) {
+      throw new BadRequestException('缺少必要参数')
+    }
+    const newDocData = new UploadDocDto()
+    newDocData.user = documentData.user
+    newDocData.fileName = documentData.fileName || file.filename
+    newDocData.collectionId = documentData.collectionId
+    newDocData.chunkRule = documentData.chunkRule || 'semantic_hybrid'
+    newDocData.chunkSize = documentData.chunkSize ?? 500
+    newDocData.chunkOverlap = documentData.chunkOverlap ?? 100
+    newDocData.minChunkSize = documentData.minChunkSize ?? 80
+    try {
+      return await this.externalApiService.previewDocChunks(newDocData, file)
+    } catch (e) {
+      throw new HttpException('分段预览失败，请稍后再试', HttpStatus.NOT_IMPLEMENTED)
     }
   }
 

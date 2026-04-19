@@ -62,6 +62,19 @@ export class DocumentController {
   }
 
   /**
+   * 上传前分段预览
+   */
+  @Post('/preview-chunks')
+  @UseGuards(AuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  async previewChunks(
+    @Query() data: UploadDocDto,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<any> {
+    return this.documentService.previewDocChunks(data, file)
+  }
+
+  /**
    * 更新文档信息
    */
   @Patch()

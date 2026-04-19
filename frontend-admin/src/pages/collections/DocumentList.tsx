@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
+  Descriptions,
   Drawer,
   Form,
   Input,
+  InputNumber,
   Modal,
   Popconfirm,
   Progress,
+  Select,
   Space,
   Spin,
   Table,
@@ -19,7 +22,14 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import type { RcFile } from 'antd/es/upload'
-import { deleteDocument, getDocumentsByCollection, updateDocument, uploadDocument } from '../../api/documents'
+import {
+  deleteDocument,
+  getDocumentsByCollection,
+  previewDocumentChunks,
+  updateDocument,
+  uploadDocument,
+  type ChunkPreviewResult,
+} from '../../api/documents'
 import type { DocumentDto } from '../../types/api'
 import { useAuth } from '../../hooks/useAuth'
 import PageHeader from '../../components/PageHeader'
@@ -28,6 +38,13 @@ import { fetchDocumentPdf } from '../../api/files'
 interface LocationState {
   collectionName?: string
 }
+
+const chunkRuleOptions = [
+  { label: '语义混合（推荐）', value: 'semantic_hybrid' },
+  { label: '句子打包（问答友好）', value: 'sentence_pack' },
+  { label: '标题结构（文档结构化）', value: 'title_structure' },
+  { label: '固定窗口（稳定长度）', value: 'fixed_window' },
+]
 
 const DocumentList: React.FC = () => {
   const { collectionId } = useParams()
@@ -41,6 +58,9 @@ const DocumentList: React.FC = () => {
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [uploadPercent, setUploadPercent] = useState(0)
   const [keyword, setKeyword] = useState('')
+  const [chunkPreviewOpen, setChunkPreviewOpen] = useState(false)
+  const [chunkPreviewLoading, setChunkPreviewLoading] = useState(false)
+  const [chunkPreviewData, setChunkPreviewData] = useState<ChunkPreviewResult | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewTitle, setPreviewTitle] = useState<string>('')
@@ -64,6 +84,10 @@ const DocumentList: React.FC = () => {
           collectionId: safeCollectionId,
           user: user?.userId || '',
           fileName: payload.fileName,
+          chunkRule: uploadForm.getFieldValue('chunkRule') || 'semantic_hybrid',
+          chunkSize: Number(uploadForm.getFieldValue('chunkSize') || 500),
+          chunkOverlap: Number(uploadForm.getFieldValue('chunkOverlap') || 100),
+          minChunkSize: Number(uploadForm.getFieldValue('minChunkSize') || 80),
         },
         payload.file,
         {
@@ -80,6 +104,23 @@ const DocumentList: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['documents', safeCollectionId] })
     },
     onError: (error: any) => message.error(error?.message || '上传失败'),
+  })
+
+  const previewChunkMutation = useMutation({
+    mutationFn: (payload: { file: File; fileName: string; chunkRule: string; chunkSize: number; chunkOverlap: number; minChunkSize: number }) =>
+      previewDocumentChunks(
+        {
+          collectionId: safeCollectionId,
+          user: user?.userId || '',
+          fileName: payload.fileName,
+          chunkRule: payload.chunkRule as any,
+          chunkSize: payload.chunkSize,
+          chunkOverlap: payload.chunkOverlap,
+          minChunkSize: payload.minChunkSize,
+        },
+        payload.file,
+      ),
+    onError: (error: any) => message.error(error?.message || '分段预览失败'),
   })
 
   const updateMutation = useMutation({
@@ -166,26 +207,74 @@ const DocumentList: React.FC = () => {
       return false
     }
     setPendingFile(file)
-    uploadForm.setFieldsValue({ fileName: file.name })
+    uploadForm.setFieldsValue({
+      fileName: file.name,
+      chunkRule: 'semantic_hybrid',
+      chunkSize: 500,
+      chunkOverlap: 100,
+      minChunkSize: 80,
+    })
     setUploadPercent(0)
     setUploadOpen(true)
     return false
   }
 
-  const submitUpload = async (values: { fileName: string }) => {
+  const submitUpload = async (values: { fileName: string; chunkRule: string; chunkSize: number; chunkOverlap: number; minChunkSize: number }) => {
     if (!pendingFile) return
     try {
       await uploadMutation.mutateAsync({ file: pendingFile, fileName: values.fileName })
       setUploadOpen(false)
       setPendingFile(null)
       setUploadPercent(0)
+      setChunkPreviewData(null)
+      setChunkPreviewOpen(false)
       uploadForm.resetFields()
     } catch (error) {
       // error message handled by mutation
     }
   }
 
+  const handlePreviewChunks = async () => {
+    if (!pendingFile) {
+      message.warning('请先选择文件')
+      return
+    }
+    try {
+      const values = await uploadForm.validateFields([
+        'fileName',
+        'chunkRule',
+        'chunkSize',
+        'chunkOverlap',
+        'minChunkSize',
+      ])
+      setChunkPreviewLoading(true)
+      const data = await previewChunkMutation.mutateAsync({
+        file: pendingFile,
+        fileName: values.fileName,
+        chunkRule: values.chunkRule,
+        chunkSize: Number(values.chunkSize),
+        chunkOverlap: Number(values.chunkOverlap),
+        minChunkSize: Number(values.minChunkSize),
+      })
+      setChunkPreviewData(data)
+      setChunkPreviewOpen(true)
+    } catch (error) {
+      // ignore, errors surfaced by表单/接口
+    } finally {
+      setChunkPreviewLoading(false)
+    }
+  }
+
   const columns = useMemo(() => {
+    const goChunkList = (record: DocumentDto) => {
+      navigate(`/collections/${safeCollectionId}/documents/${record.id}/chunks`, {
+        state: {
+          collectionName: state?.collectionName,
+          documentName: record.fileName,
+        },
+      })
+    }
+
     return [
       {
         title: '文件名称',
@@ -217,27 +306,44 @@ const DocumentList: React.FC = () => {
         width: 360,
         render: (_: unknown, record: DocumentDto) => (
           <Space>
-            <Button icon={<EyeOutlined />} onClick={() => openPreview(record)}>
+            <Button
+              icon={<EyeOutlined />}
+              onClick={(e) => {
+                e.stopPropagation()
+                openPreview(record)
+              }}
+            >
               预览
             </Button>
-            <Button onClick={() => openRename(record)}>重命名</Button>
             <Button
-              onClick={() =>
-                navigate(`/collections/${safeCollectionId}/documents/${record.id}/chunks`, {
-                  state: {
-                    collectionName: state?.collectionName,
-                    documentName: record.fileName,
-                  },
-                })
-              }
+              onClick={(e) => {
+                e.stopPropagation()
+                openRename(record)
+              }}
             >
-              分段
+              重命名
+            </Button>
+            <Button
+              type="primary"
+              onClick={(e) => {
+                e.stopPropagation()
+                goChunkList(record)
+              }}
+            >
+              查看
             </Button>
             <Popconfirm
               title="确认删除该文件？"
               onConfirm={() => deleteMutation.mutate(record.id)}
             >
-              <Button danger>删除</Button>
+              <Button
+                danger
+                onClick={(e) => {
+                  e.stopPropagation()
+                }}
+              >
+                删除
+              </Button>
             </Popconfirm>
           </Space>
         ),
@@ -303,6 +409,17 @@ const DocumentList: React.FC = () => {
         dataSource={filteredDocs}
         columns={columns}
         size="middle"
+        onRow={(record) => ({
+          onClick: () => {
+            navigate(`/collections/${safeCollectionId}/documents/${record.id}/chunks`, {
+              state: {
+                collectionName: state?.collectionName,
+                documentName: record.fileName,
+              },
+            })
+          },
+          style: { cursor: 'pointer' },
+        })}
         pagination={{ pageSize: 8, showSizeChanger: true }}
       />
 
@@ -342,14 +459,18 @@ const DocumentList: React.FC = () => {
       <Modal
         open={uploadOpen}
         title="上传文件"
+        width={720}
         onCancel={() => {
           setUploadOpen(false)
           setPendingFile(null)
           setUploadPercent(0)
+          setChunkPreviewData(null)
+          setChunkPreviewOpen(false)
           uploadForm.resetFields()
         }}
         onOk={() => uploadForm.submit()}
-        okButtonProps={{ loading: uploadMutation.isPending }}
+        okText="确认入库"
+        okButtonProps={{ loading: uploadMutation.isPending, disabled: previewChunkMutation.isPending }}
       >
         <Form form={uploadForm} layout="vertical" onFinish={submitUpload}>
           <Form.Item
@@ -359,6 +480,50 @@ const DocumentList: React.FC = () => {
           >
             <Input placeholder="请输入文件名称" />
           </Form.Item>
+          <Space style={{ width: '100%' }} size={12} align="start">
+            <Form.Item
+              label="分段规则"
+              name="chunkRule"
+              style={{ flex: 1, minWidth: 220 }}
+              rules={[{ required: true, message: '请选择分段规则' }]}
+            >
+              <Select options={chunkRuleOptions} />
+            </Form.Item>
+            <Form.Item
+              label="分段长度"
+              name="chunkSize"
+              style={{ width: 120 }}
+              rules={[{ required: true, message: '请输入分段长度' }]}
+            >
+              <InputNumber min={100} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item
+              label="重叠长度"
+              name="chunkOverlap"
+              style={{ width: 120 }}
+              rules={[{ required: true, message: '请输入重叠长度' }]}
+            >
+              <InputNumber min={0} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item
+              label="最小长度"
+              name="minChunkSize"
+              style={{ width: 120 }}
+              rules={[{ required: true, message: '请输入最小长度' }]}
+            >
+              <InputNumber min={20} style={{ width: '100%' }} />
+            </Form.Item>
+          </Space>
+          <Space style={{ marginBottom: 8 }}>
+            <Button onClick={handlePreviewChunks} loading={chunkPreviewLoading || previewChunkMutation.isPending}>
+              预览前10条分段
+            </Button>
+            {chunkPreviewData?.summary ? (
+              <Typography.Text type="secondary">
+                共 {chunkPreviewData.summary.total_chunks} 段，平均长度 {chunkPreviewData.summary.avg_length}
+              </Typography.Text>
+            ) : null}
+          </Space>
           {uploadMutation.isPending ? (
             <div style={{ marginTop: 12 }}>
               <Typography.Text className="muted">上传进度</Typography.Text>
@@ -397,6 +562,38 @@ const DocumentList: React.FC = () => {
           />
         ) : (
           <Typography.Text className="muted">暂无预览内容</Typography.Text>
+        )}
+      </Drawer>
+
+      <Drawer
+        title="分段预览（前10条）"
+        placement="right"
+        width={780}
+        open={chunkPreviewOpen}
+        onClose={() => setChunkPreviewOpen(false)}
+        destroyOnClose
+      >
+        {!chunkPreviewData ? (
+          <Typography.Text className="muted">暂无分段预览内容</Typography.Text>
+        ) : (
+          <Space direction="vertical" size={14} style={{ width: '100%' }}>
+            <Descriptions bordered column={2} size="small">
+              <Descriptions.Item label="分段规则">{chunkPreviewData.summary.chunk_rule}</Descriptions.Item>
+              <Descriptions.Item label="总分段数">{chunkPreviewData.summary.total_chunks}</Descriptions.Item>
+              <Descriptions.Item label="分段长度">{chunkPreviewData.summary.chunk_size}</Descriptions.Item>
+              <Descriptions.Item label="重叠长度">{chunkPreviewData.summary.chunk_overlap}</Descriptions.Item>
+              <Descriptions.Item label="最小长度">{chunkPreviewData.summary.min_chunk_size}</Descriptions.Item>
+              <Descriptions.Item label="平均长度">{chunkPreviewData.summary.avg_length}</Descriptions.Item>
+            </Descriptions>
+            {chunkPreviewData.preview_chunks.map((item, index) => (
+              <div key={`${index}-${item.slice(0, 12)}`} style={{ border: '1px solid #e7ebef', borderRadius: 8, padding: 12 }}>
+                <Typography.Text strong>{`#${index + 1}`}</Typography.Text>
+                <Typography.Paragraph style={{ marginBottom: 0, marginTop: 6 }}>
+                  {item}
+                </Typography.Paragraph>
+              </div>
+            ))}
+          </Space>
         )}
       </Drawer>
 
