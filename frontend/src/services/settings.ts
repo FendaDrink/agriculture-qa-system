@@ -7,8 +7,7 @@ const defaults: AppSettings = {
   baseUrl: 'http://localhost:3000',
   token: '',
   userId: '',
-  model: 'gpt-3.5-turbo-1106',
-  collectionId: '28b0f5cc_武汉市知识库',
+  model: 'chatgpt-4o-latest',
   username: '',
 }
 

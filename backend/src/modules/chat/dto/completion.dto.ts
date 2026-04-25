@@ -11,7 +11,7 @@ export class CompletionDto {
 
   @IsString()
   @IsOptional()
-  collectionId?: string = '013573a2_agriculture'
+  collectionId?: string
 
   @IsString()
   @IsNotEmpty()

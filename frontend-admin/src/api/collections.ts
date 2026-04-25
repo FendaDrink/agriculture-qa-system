@@ -4,14 +4,14 @@ import type { CollectionDto } from '../types/api'
 export interface CreateCollectionParams {
   collectionName: string
   createBy: string
-  city?: string
+  city?: number
 }
 
 export interface UpdateCollectionParams {
   id: string
   collectionName: string
   createBy: string
-  city?: string
+  city?: number
 }
 
 export const getCollections = () => api.get<CollectionDto[]>('/database')

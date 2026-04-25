@@ -6,6 +6,7 @@ import { EncryptionService } from './encryption/encryption.service'
 import { JwtService } from '@nestjs/jwt'
 import { UserDAO } from '../user/dao/user.dao'
 import { TokenDto } from './dto/token.dto'
+import { cityNameToCode, HubeiCityCode } from '../../common/constants/city'
 
 @Injectable()
 export class AuthService {
@@ -40,7 +41,7 @@ export class AuthService {
       userId: userPwd.userId,
       roleId: userInfo.roleId,
       username: userInfo.username,
-      city: userInfo.city,
+      city: cityNameToCode((userInfo as any).city, HubeiCityCode.WUHAN),
     }
 
     return {

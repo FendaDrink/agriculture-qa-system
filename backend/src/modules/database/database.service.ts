@@ -9,11 +9,12 @@ import { v4 as uuidV4 } from 'uuid'
 import { UpdateCollectionDto } from './dto/updateCollection.dto'
 import { ExternalApiService } from '../../common/api/externalApi.service'
 import { RecallDto } from './dto/recall.dto'
+import { cityNameToCode, HubeiCityCode } from '../../common/constants/city'
 
 interface RequestUser {
   userId: string
   roleId: number
-  city?: string
+  city?: string | number
 }
 
 @Injectable()
@@ -31,9 +32,10 @@ export class DatabaseService {
    * 获取所有向量库
    */
   async findAllCollections(user: RequestUser): Promise<CollectionDto[]> {
+    const userCityCode = cityNameToCode(user.city, HubeiCityCode.HUBEI_PROVINCE)
     if (user.roleId === 0) return this.collectionDAO.findAllCollections()
     if (user.roleId === 1) {
-      return this.collectionDAO.findCollectionByConditions({ city: user.city || '湖北省' })
+      return this.collectionDAO.findCollectionByConditions({ city: userCityCode })
     }
     return this.collectionDAO.findCollectionByConditions({ createBy: user.userId })
   }
@@ -42,9 +44,10 @@ export class DatabaseService {
    * 获取符合条件的向量库
    */
   async findCollectionsByCondition(user: RequestUser, collectionData: SearchCollectionDto): Promise<CollectionDto[]> {
+    const userCityCode = cityNameToCode(user.city, HubeiCityCode.HUBEI_PROVINCE)
     const scoped = { ...collectionData }
     if (user.roleId === 1) {
-      scoped.city = user.city || '湖北省'
+      scoped.city = userCityCode
     }
     if (user.roleId === 2) {
       scoped.createBy = user.userId
@@ -59,9 +62,10 @@ export class DatabaseService {
     if (user.roleId !== 0 && user.roleId !== 1) {
       throw new HttpException('无权限创建向量库', HttpStatus.FORBIDDEN)
     }
+    const userCityCode = cityNameToCode(user.city, HubeiCityCode.HUBEI_PROVINCE)
     const city = user.roleId === 0
-      ? (createCollectionData.city || user.city || '湖北省')
-      : (user.city || '湖北省')
+      ? (createCollectionData.city ?? userCityCode)
+      : userCityCode
     return this.dataSource.transaction(async (manager) => {
       const collection = {
         ...createCollectionData,
@@ -91,7 +95,8 @@ export class DatabaseService {
       if (!col || !col.length) {
         throw new HttpException('该向量库不存在', HttpStatus.NOT_FOUND)
       }
-      if (user.roleId === 1 && col[0].city !== (user.city || '湖北省')) {
+      const userCityCode = cityNameToCode(user.city, HubeiCityCode.HUBEI_PROVINCE)
+      if (user.roleId === 1 && col[0].city !== userCityCode) {
         throw new HttpException('无权限修改其他城市向量库', HttpStatus.FORBIDDEN)
       }
 
@@ -99,7 +104,7 @@ export class DatabaseService {
       const newCollectionData = {
         ...collectionData,
         createBy: col[0].createBy,
-        city: user.roleId === 0 ? (collectionData.city || col[0].city) : col[0].city,
+        city: user.roleId === 0 ? (collectionData.city ?? col[0].city) : col[0].city,
       }
       const collection = await this.collectionDAO.updateCollection(newCollectionData, manager)
 
@@ -122,7 +127,8 @@ export class DatabaseService {
       if (!col || !col.length) {
         throw new HttpException('该向量库不存在', HttpStatus.NOT_FOUND)
       }
-      if (user.roleId === 1 && col[0].city !== (user.city || '湖北省')) {
+      const userCityCode = cityNameToCode(user.city, HubeiCityCode.HUBEI_PROVINCE)
+      if (user.roleId === 1 && col[0].city !== userCityCode) {
         throw new HttpException('无权限删除其他城市向量库', HttpStatus.FORBIDDEN)
       }
 

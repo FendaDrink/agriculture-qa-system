@@ -1,4 +1,4 @@
-import { Card, Form, Input, Button, Typography, message } from 'antd'
+import { Card, Form, Input, Button, Typography, Space, Tag, message } from 'antd'
 import { useMutation } from '@tanstack/react-query'
 import { login as loginApi } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
@@ -22,11 +22,30 @@ const Login: React.FC = () => {
 
   return (
     <div className="login-page">
-      <Card className="login-card">
-        <div className="login-title">知识库管理后台</div>
-        <Typography.Paragraph className="muted">
-          登录后管理用户、向量库与分段
-        </Typography.Paragraph>
+      <div className="login-shell">
+        <div className="login-aside">
+          <Tag bordered={false} color="green" className="login-kicker">
+            后台入口
+          </Tag>
+          <Typography.Title level={1} className="login-hero-title">
+            农业知识问答助手
+            <br />
+            后台管理中心
+          </Typography.Title>
+          <Typography.Paragraph className="login-hero-desc">
+            用于管理用户、知识库、资料分段、常见问题和日志审计，整体风格与前台服务端保持统一。
+          </Typography.Paragraph>
+          <Space wrap className="login-feature-list">
+            <span className="login-feature-pill">用户与城市管理</span>
+            <span className="login-feature-pill">知识库与文件管理</span>
+            <span className="login-feature-pill">FAQ 与日志审计</span>
+          </Space>
+        </div>
+        <Card className="login-card">
+          <div className="login-title">账号登录</div>
+          <Typography.Paragraph className="muted login-copy">
+            登录后进入后台管理中心
+          </Typography.Paragraph>
         <Form
           layout="vertical"
           onFinish={(values) => mutation.mutate(values)}
@@ -53,7 +72,8 @@ const Login: React.FC = () => {
             登录
           </Button>
         </Form>
-      </Card>
+        </Card>
+      </div>
     </div>
   )
 }

@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common'
 import { UserService } from './user.service'
@@ -29,8 +30,8 @@ export class UserController {
    */
   @Get()
   @UseGuards(AuthGuard)
-  async findAll(): Promise<UserDto[]> {
-    return this.userService.findAllUsers()
+  async findAll(@Req() req: any): Promise<UserDto[]> {
+    return this.userService.findAllUsers(req.user)
   }
 
   /**

@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Between, EntityManager, Like, Repository } from 'typeorm'
+import { Between, EntityManager, In, Like, Repository } from 'typeorm'
 import { DocumentEntity } from '../document/entities/document.entity'
 import { CollectionEntity } from '../entities/collection.entity'
 import { CollectionDto } from '../dto/collection.dto'
 import { SearchCollectionDto } from '../dto/searchCollection.dto'
 import { createCollectionDto } from '../dto/createCollection.dto'
 import { UpdateCollectionDto } from '../dto/updateCollection.dto'
+import { cityNameToCode } from '../../../common/constants/city'
+import { UserEntity } from '../../user/entities/user.entity'
 
 @Injectable()
 export class CollectionDAO {
@@ -15,13 +17,16 @@ export class CollectionDAO {
     private collectionRepository: Repository<CollectionEntity>, // 注入 collectionRepository
     @InjectRepository(DocumentEntity, 'rag')
     private documentRepository: Repository<DocumentEntity>, // 注入 documentRepository
+    @InjectRepository(UserEntity)
+    private userRepository: Repository<UserEntity>,
   ) {}
 
   /**
    * 查找所有向量库
    */
   async findAllCollections(): Promise<CollectionDto[]> {
-    return this.collectionRepository.find()
+    const list = await this.collectionRepository.find()
+    return this.attachUsernames(list)
   }
 
   /**
@@ -72,7 +77,8 @@ export class CollectionDAO {
       where.updateTime = Between(updateTimeStart, new Date())
     }
 
-    return this.collectionRepository.find({ where })
+    const list = await this.collectionRepository.find({ where })
+    return this.attachUsernames(list)
   }
 
   /**
@@ -126,6 +132,22 @@ export class CollectionDAO {
   toCollectionDto(collection: CollectionEntity): CollectionDto {
     return {
       ...collection,
+      city: cityNameToCode((collection as any).city),
     }
+  }
+
+  private async attachUsernames(collections: CollectionEntity[]): Promise<CollectionDto[]> {
+    const userIds = [...new Set(collections.map((item) => item.createBy).filter(Boolean))]
+    const users = userIds.length
+      ? await this.userRepository.find({
+          where: { id: In(userIds) },
+          select: ['id', 'username'],
+        })
+      : []
+    const usernameMap = new Map(users.map((item) => [item.id, item.username]))
+    return collections.map((item) => ({
+      ...this.toCollectionDto(item),
+      username: usernameMap.get(item.createBy) || item.createBy,
+    }))
   }
 }

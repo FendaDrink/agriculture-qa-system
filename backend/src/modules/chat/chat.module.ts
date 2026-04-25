@@ -15,6 +15,7 @@ import { ChatMessageService } from './message/chatMessage.service'
 import { ChatMessageDAO } from './message/dao/chatMessage.dao'
 import { CollectionEntity } from '../database/entities/collection.entity'
 import { DocumentEntity } from '../database/document/entities/document.entity'
+import { UserEntity } from '../user/entities/user.entity'
 
 @Module({
   imports: [
@@ -26,7 +27,7 @@ import { DocumentEntity } from '../database/document/entities/document.entity'
       }),
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([ChatSessionEntity, ChatMessageEntity]),
+    TypeOrmModule.forFeature([ChatSessionEntity, ChatMessageEntity, UserEntity]),
     TypeOrmModule.forFeature([CollectionEntity, DocumentEntity], 'rag'),
     AuthModule,
     ChatSessionModule,

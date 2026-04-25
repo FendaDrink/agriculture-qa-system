@@ -9,9 +9,9 @@ export class UserDto {
   @IsString()
   username: string
 
+  @IsInt()
   @IsNotEmpty()
-  @IsString()
-  city: string
+  city: number
 
   @IsOptional()
   password?: string

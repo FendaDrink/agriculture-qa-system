@@ -1,4 +1,4 @@
-import { IsDate, IsNotEmpty, IsString } from 'class-validator'
+import { IsDate, IsInt, IsNotEmpty, IsString } from 'class-validator'
 
 export class CollectionDto {
   @IsString()
@@ -9,13 +9,16 @@ export class CollectionDto {
   @IsNotEmpty()
   collectionName: string
 
-  @IsString()
+  @IsInt()
   @IsNotEmpty()
-  city: string
+  city: number
 
   @IsString()
   @IsNotEmpty()
   createBy: string
+
+  @IsString()
+  username?: string
 
   @IsDate()
   @IsNotEmpty()

@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 import { addChunk, deleteChunk, getChunks, updateChunk } from '../../api/chunks'
 import type { ChunkDetailDto } from '../../types/api'
 import { useAuth } from '../../hooks/useAuth'
+import AdminEmptyState from '../../components/AdminEmptyState'
 import CopyButton from '../../components/CopyButton'
 import PageHeader from '../../components/PageHeader'
 
@@ -41,15 +42,16 @@ const ChunkList: React.FC = () => {
   const filteredChunks = useMemo(() => {
     const normalized = keyword.trim().toLowerCase()
     const list = normalized
-      ? data.filter((item: { content: string; id: string; createBy: string }) => {
+      ? data.filter((item: { content: string; id: string; create_by?: string; createBy?: string; username?: string }) => {
           return (
             item.content.toLowerCase().includes(normalized) ||
             item.id.toLowerCase().includes(normalized) ||
-            item.createBy.toLowerCase().includes(normalized)
+            (item.create_by || item.createBy || '').toLowerCase().includes(normalized) ||
+            (item.username || '').toLowerCase().includes(normalized)
           )
         })
       : data
-    return [...list].sort((a, b) => dayjs(b.updateTime).valueOf() - dayjs(a.updateTime).valueOf())
+    return [...list].sort((a: any, b: any) => dayjs(b.update_time || b.updateTime).valueOf() - dayjs(a.update_time || a.updateTime).valueOf())
   }, [data, keyword])
 
   const addMutation = useMutation({
@@ -141,7 +143,7 @@ const ChunkList: React.FC = () => {
             </Button>
             <Input.Search
               allowClear
-              placeholder="搜索内容 / ID / 创建人"
+              placeholder="搜索内容 / ID / 修改人"
               style={{ width: 260 }}
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
@@ -160,14 +162,26 @@ const ChunkList: React.FC = () => {
         }
       />
 
-      <Typography.Text className="muted">共 {filteredChunks.length} 个分段</Typography.Text>
+      <div className="admin-toolbar-panel">
+        <div className="admin-toolbar-meta">
+          <span className="admin-summary-chip">当前共 {filteredChunks.length} 个分段</span>
+          {keyword ? <span className="admin-summary-chip subtle">已按关键词检索</span> : null}
+        </div>
+      </div>
 
       <List
         className="fixed-card-list"
         loading={isLoading}
-        grid={{ gutter: 16, xs: 1, sm: 1, md: 2, lg: 2, xl: 2 }}
+        grid={{ gutter: [16, 16], xs: 1, sm: 1, md: 2, lg: 3, xl: 4, xxl: 5 }}
         dataSource={filteredChunks}
-        locale={{ emptyText: '暂无分段' }}
+        locale={{
+          emptyText: (
+            <AdminEmptyState
+              title="暂无分段"
+              description="当前文件下还没有分段内容，可以先新增分段或返回文件页重新处理。"
+            />
+          ),
+        }}
         renderItem={(item) => (
           <List.Item>
             <Card
@@ -181,6 +195,8 @@ const ChunkList: React.FC = () => {
                   <CopyButton text={item.content} label="" />
                   <Popconfirm
                     title="确认删除该分段？"
+                    description="删除后该分段内容将无法恢复。"
+                    overlayClassName="admin-danger-popconfirm"
                     onConfirm={(e) => {
                       e?.stopPropagation()
                       deleteMutation.mutate({
@@ -204,13 +220,14 @@ const ChunkList: React.FC = () => {
               <Typography.Paragraph ellipsis={{ rows: 4 }} style={{ marginBottom: 8 }}>
                 {item.content}
               </Typography.Paragraph>
-              <Typography.Text className="muted">
-                更新时间：{dayjs(item.updateTime).format('YYYY-MM-DD HH:mm')}
-              </Typography.Text>
-              <div style={{ marginTop: 6 }}>
-                <Typography.Text className="muted">
-                  创建人：{item.createBy} · 创建时间：{dayjs(item.createTime).format('YYYY-MM-DD HH:mm')}
-                </Typography.Text>
+              <div className="chunk-meta-inline">
+                <span className="chunk-meta-inline-item">
+                  修改人：{item.username || item.create_by || item.createBy}
+                </span>
+                <span className="chunk-meta-inline-divider">·</span>
+                <span className="chunk-meta-inline-item">
+                  修改时间：{dayjs(item.update_time || item.updateTime).format('YYYY-MM-DD HH:mm')}
+                </span>
               </div>
             </Card>
           </List.Item>
@@ -218,6 +235,7 @@ const ChunkList: React.FC = () => {
       />
 
       <Modal
+        className="admin-form-modal"
         open={editOpen}
         title={editing ? '编辑分段' : '新增分段'}
         onCancel={() => {
@@ -233,7 +251,7 @@ const ChunkList: React.FC = () => {
             name="content"
             rules={[{ required: true, message: '请输入分段内容' }]}
           >
-            <Input.TextArea rows={6} placeholder="请输入分段内容" />
+            <Input.TextArea rows={12} placeholder="请输入分段内容" />
           </Form.Item>
         </Form>
       </Modal>

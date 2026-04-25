@@ -9,6 +9,13 @@ import { EncryptionService } from '../auth/encryption/encryption.service'
 import { LoginDto } from './dto/login.dto'
 import { CreateUserDto } from './dto/createUser.dto'
 import { UpdateUserDto } from './dto/updateUser.dto'
+import { cityNameToCode, HubeiCityCode } from '../../common/constants/city'
+
+interface RequestUser {
+  userId: string
+  roleId: number
+  city?: string | number
+}
 
 @Injectable()
 export class UserService {
@@ -24,8 +31,18 @@ export class UserService {
   /**
    * 获取所有用户
    */
-  async findAllUsers(): Promise<UserDto[]> {
-    return this.userDAO.findAllUsers()
+  async findAllUsers(currentUser: RequestUser): Promise<UserDto[]> {
+    const users = await this.userDAO.findAllUsers()
+    if (currentUser.roleId === 0) {
+      return users
+    }
+
+    if (currentUser.roleId === 1) {
+      const currentCity = cityNameToCode(currentUser.city, HubeiCityCode.WUHAN)
+      return users.filter((item) => Number(item.city) === currentCity && [1, 2].includes(Number(item.roleId)))
+    }
+
+    return users.filter((item) => item.id === currentUser.userId)
   }
 
   /**
@@ -39,7 +56,7 @@ export class UserService {
     if ((!user && isExistType) || (user && !isExistType)) {
       throw new HttpException(responseMsg, HttpStatus.BAD_REQUEST)
     }
-    return user
+    return user as UserDto
   }
 
   /**
@@ -53,16 +70,21 @@ export class UserService {
       if (!userData.username) {
         userData.username = userData.id
       }
-      if (!userData.city) {
-        userData.city = '湖北省'
-      }
+      const cityCode = cityNameToCode(userData.city as any, HubeiCityCode.WUHAN)
+      userData.city = cityCode as any
 
       if (!userData.password) {
         throw new HttpException('密码不能为空', HttpStatus.BAD_REQUEST)
       }
 
       // 2. 创建用户
-      const user = await this.userDAO.createUser(userData, manager)
+      const user = await this.userDAO.createUser(
+        {
+          ...userData,
+          city: cityCode as any,
+        },
+        manager,
+      )
 
       // 3. 创建用户-密码对
       // 3.1 构造新的加盐密码
@@ -90,6 +112,7 @@ export class UserService {
         ...user,
         ...userData,
         id: user.id,
+        city: cityNameToCode((userData as any).city, (user as any).city ?? HubeiCityCode.WUHAN),
       }
 
       // 2. 更新用户信息

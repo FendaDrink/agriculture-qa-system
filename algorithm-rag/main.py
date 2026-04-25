@@ -1,6 +1,10 @@
 import hashlib
+import time
 import uuid
 import mysql.connector
+import json
+import traceback
+import re
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -11,10 +15,20 @@ from pdfminer.layout import LTTextContainer
 import chromadb
 from dotenv import load_dotenv, find_dotenv
 import os
+import shutil
 
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, FileResponse
 
+from typing import Optional, List, Any
+from typing_extensions import TypedDict
 from pydantic import BaseModel
+
+
+class ChatMessage(TypedDict, total=False):
+    extra: Any
+    sender: int
+    status: int
+    content: str
 
 
 class UploadFileRequest(BaseModel):
@@ -26,7 +40,8 @@ class QueryRequest(BaseModel):
     query: str
     model: str
     collection_id: str
-    chat_history: str
+    chat_history: Optional[List[ChatMessage]] = None
+    context_chunks: Optional[List[str]] = None
 
 
 class AddRequest(BaseModel):
@@ -56,6 +71,13 @@ class RecallRequest(BaseModel):
     top_n: int = 10
 
 
+class FollowUpRequest(BaseModel):
+    query: Optional[str] = None
+    model: Optional[str] = None
+    limit: int = 3
+    chat_history: Optional[List[ChatMessage]] = None
+
+
 # 加载环境变量
 _ = load_dotenv(find_dotenv())
 base_url = os.environ.get("OPENAI_API_BASE")
@@ -67,6 +89,52 @@ db_name = os.environ.get("DB_NAME")
 
 app = FastAPI()
 client = OpenAI(api_key=api_key, base_url=base_url)
+request_logs_table_ready = False
+
+
+def ensure_request_logs_table(mysql_db):
+    global request_logs_table_ready
+    if request_logs_table_ready:
+        return
+    create_sql = """
+        CREATE TABLE IF NOT EXISTS request_logs (
+            id VARCHAR(36) PRIMARY KEY,
+            create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+            source VARCHAR(32) NOT NULL,
+            client_app VARCHAR(32) NULL,
+            request_id VARCHAR(64) NULL,
+            method VARCHAR(16) NOT NULL,
+            path VARCHAR(512) NOT NULL,
+            original_url VARCHAR(1024) NOT NULL,
+            status_code INT NOT NULL,
+            duration_ms INT NOT NULL,
+            ip VARCHAR(64) NULL,
+            user_agent TEXT NULL,
+            referer TEXT NULL,
+            user_id VARCHAR(64) NULL,
+            role_id INT NULL,
+            headers LONGTEXT NULL,
+            `query` LONGTEXT NULL,
+            body LONGTEXT NULL,
+            error_message TEXT NULL,
+            error_stack LONGTEXT NULL,
+            INDEX idx_create_time (create_time),
+            INDEX idx_source (source),
+            INDEX idx_client_app (client_app),
+            INDEX idx_status_code (status_code),
+            INDEX idx_user_id (user_id),
+            INDEX idx_method_path (method, path)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    """
+    mysql_db.execute(create_sql)
+    request_logs_table_ready = True
+
+
+def safe_json(value):
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except Exception:
+        return json.dumps({"__error": "json_dumps_failed"}, ensure_ascii=False)
 
 
 # 封装 OpenAI 的 Embedding 模型接口
@@ -75,35 +143,139 @@ def get_embeddings(texts, model="text-embedding-3-small"):
     return [x.embedding for x in data]
 
 
-# PDF 文件加载器
-class PDFFileLoader:
-    def __init__(self, file_path: str):
-        self.paragraphs = self.extract_text_from_pdf(file_path)
+# PDF 文本提取与分段
+def extract_pdf_text(filename, page_numbers=None):
+    full_text = ''
+    for i, page_layout in enumerate(extract_pages(filename)):
+        if page_numbers is not None and i not in page_numbers:
+            continue
+        for element in page_layout:
+            if isinstance(element, LTTextContainer):
+                full_text += element.get_text() + '\n'
+    return full_text
 
-    def get_paragraphs(self):
-        return self.paragraphs
 
-    def extract_text_from_pdf(self, filename, page_numbers=None):
-        paragraphs = []
-        buffer = ''
-        full_text = ''
-        for i, page_layout in enumerate(extract_pages(filename)):
-            if page_numbers is not None and i not in page_numbers:
-                continue
-            for element in page_layout:
-                if isinstance(element, LTTextContainer):
-                    full_text += element.get_text() + '\n'
+def normalize_text(text: str):
+    text = re.sub(r'[ \t]+', ' ', text or '')
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
-        lines = full_text.split('。')
 
-        for text in lines:
-            buffer = text.replace('\n', ' ').replace(' ', '')
-            if buffer:
-                paragraphs.append(buffer)
-                buffer = ''
-        if buffer:
-            paragraphs.append(buffer)
-        return paragraphs
+def split_sentences(text: str):
+    normalized = normalize_text(text)
+    if not normalized:
+        return []
+    raw = re.split(r'(?<=[。！？；;.!?])\s*', normalized)
+    return [x.strip() for x in raw if x and x.strip()]
+
+
+def chunk_by_fixed(text: str, chunk_size=500, overlap=100):
+    normalized = normalize_text(text)
+    if not normalized:
+        return []
+    step = max(1, chunk_size - overlap)
+    chunks = []
+    start = 0
+    while start < len(normalized):
+        piece = normalized[start:start + chunk_size].strip()
+        if piece:
+            chunks.append(piece)
+        start += step
+    return chunks
+
+
+def chunk_by_sentence_pack(text: str, chunk_size=500, overlap=100):
+    sentences = split_sentences(text)
+    if not sentences:
+        return []
+
+    chunks = []
+    current = ''
+    for sentence in sentences:
+        if len(current) + len(sentence) <= chunk_size:
+            current += sentence
+        else:
+            if current:
+                chunks.append(current)
+            current = sentence
+    if current:
+        chunks.append(current)
+
+    if overlap <= 0 or len(chunks) <= 1:
+        return chunks
+
+    merged = [chunks[0]]
+    for i in range(1, len(chunks)):
+        prev_tail = chunks[i - 1][-overlap:] if len(chunks[i - 1]) > overlap else chunks[i - 1]
+        merged.append((prev_tail + chunks[i]).strip())
+    return merged
+
+
+def chunk_by_semantic_hybrid(text: str, chunk_size=500, overlap=100):
+    blocks = [b.strip() for b in re.split(r'\n\s*\n', normalize_text(text)) if b and b.strip()]
+    if not blocks:
+        return []
+    chunks = []
+    for block in blocks:
+        if len(block) <= chunk_size:
+            chunks.append(block)
+            continue
+        chunks.extend(chunk_by_sentence_pack(block, chunk_size=chunk_size, overlap=overlap))
+    return chunks
+
+
+def chunk_by_title_structure(text: str, chunk_size=500, overlap=80):
+    lines = [line.strip() for line in normalize_text(text).split('\n') if line.strip()]
+    sections = []
+    current = []
+    title_pattern = re.compile(r'^(第[一二三四五六七八九十百]+[章节部分]|[一二三四五六七八九十]+[、.])')
+    for line in lines:
+        if title_pattern.search(line):
+            if current:
+                sections.append('\n'.join(current))
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        sections.append('\n'.join(current))
+    if not sections:
+        return chunk_by_semantic_hybrid(text, chunk_size=chunk_size, overlap=overlap)
+
+    chunks = []
+    for section in sections:
+        if len(section) <= chunk_size:
+            chunks.append(section)
+        else:
+            chunks.extend(chunk_by_sentence_pack(section, chunk_size=chunk_size, overlap=overlap))
+    return chunks
+
+
+def build_chunks(text: str, chunk_rule='semantic_hybrid', chunk_size=500, chunk_overlap=100, min_chunk_size=80):
+    rule = (chunk_rule or 'semantic_hybrid').strip().lower()
+    chunk_size = int(chunk_size or 500)
+    chunk_overlap = int(chunk_overlap or 100)
+    min_chunk_size = int(min_chunk_size or 80)
+
+    if rule == 'sentence_pack':
+        chunks = chunk_by_sentence_pack(text, chunk_size=chunk_size, overlap=chunk_overlap)
+    elif rule == 'fixed_window':
+        chunks = chunk_by_fixed(text, chunk_size=chunk_size, overlap=chunk_overlap)
+    elif rule == 'title_structure':
+        chunks = chunk_by_title_structure(text, chunk_size=chunk_size, overlap=chunk_overlap)
+    else:
+        chunks = chunk_by_semantic_hybrid(text, chunk_size=chunk_size, overlap=chunk_overlap)
+
+    cleaned = []
+    seen = set()
+    for chunk in chunks:
+        normalized = chunk.strip()
+        if len(normalized) < min_chunk_size:
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        cleaned.append(normalized)
+    return cleaned
 
 
 # MySQL数据库连接器
@@ -140,12 +312,26 @@ class MySQLConnector:
 
 class MyVectorDBConnector:
     def __init__(self, collection_id, embedding_fn):
-        chroma_client = chromadb.PersistentClient(path=f"./chromaDB/{collection_id}")
-        self.collection = chroma_client.get_or_create_collection(name=collection_id)
+        safe_collection_id = self._to_safe_collection_id(collection_id)
+        chroma_client = chromadb.PersistentClient(path=f"./chromaDB/{safe_collection_id}")
+        self.collection = chroma_client.get_or_create_collection(name=safe_collection_id)
         self.embedding_fn = embedding_fn
 
+    @staticmethod
+    def _to_safe_collection_id(collection_id: str):
+        raw = (collection_id or "").strip()
+        if not raw:
+            return "kb_default"
+        if (
+            3 <= len(raw) <= 512
+            and re.match(r'^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$', raw)
+        ):
+            return raw
+        digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:24]
+        return f"kb_{digest}"
+
     # 批量embedding并新增分段
-    def add_documents(self, documents, document_id, user):
+    def add_chunk(self, documents, document_id, user, base_metadata=None):
         # Mysql 实例
         mysql_db = MySQLConnector(host=db_host, user=db_username, password=db_password, database=db_name)
         ids = [f"{uuid.uuid4()}" for i in range(len(documents))]
@@ -168,13 +354,14 @@ class MyVectorDBConnector:
         self.collection.add(
             embeddings=embeddings,
             documents=documents,
-            ids=ids
+            ids=ids,
+            metadatas=[dict(base_metadata or {}) for _ in ids],
         )
 
         return ids
 
     # 更新embedding后的分段内容
-    def update_document(self, update_body):
+    def update_chunk(self, update_body):
         # Mysql 实例
         mysql_db = MySQLConnector(host=db_host, user=db_username, password=db_password, database=db_name)
         id_ = update_body.id
@@ -199,7 +386,7 @@ class MyVectorDBConnector:
         )
 
     # 根据 id 删除分段（支持传入数组）
-    def delete_document(self, id_, document_id):
+    def delete_chunk(self, id_, document_id):
         # Mysql 实例
         mysql_db = MySQLConnector(host=db_host, user=db_username, password=db_password, database=db_name)
 
@@ -212,7 +399,6 @@ class MyVectorDBConnector:
         # 批量构建删除 SQL
         placeholders = ','.join(['%s'] * len(ids))
         sql = f"DELETE FROM `{document_id}` WHERE id IN ({placeholders})"
-        print(sql)
         mysql_db.execute(sql, tuple(ids))
         mysql_db.close()
 
@@ -232,9 +418,174 @@ async def ignore_well_known_requests(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    if request.url.path.startswith("/.well-known") or request.url.path == "/health":
+        return await call_next(request)
+
+    start = time.time()
+    body_payload = None
+    error_message = None
+    error_stack = None
+    response = None
+    status_code = 500
+
+    content_type = (request.headers.get("content-type") or "").lower()
+    if content_type.startswith("multipart/form-data"):
+        body_payload = {
+            "__content_type": content_type,
+            "__content_length": request.headers.get("content-length"),
+            "__note": "multipart body omitted",
+        }
+    else:
+        try:
+            raw_body = await request.body()
+            body_payload = raw_body.decode("utf-8", errors="replace")
+        except Exception:
+            body_payload = ""
+
+    try:
+        response = await call_next(request)
+        status_code = getattr(response, "status_code", 200) or 200
+        return response
+    except Exception as e:
+        error_message = str(e)
+        error_stack = traceback.format_exc()
+        raise
+    finally:
+        try:
+            duration_ms = int((time.time() - start) * 1000)
+            request_id = (request.headers.get("x-request-id") or str(uuid.uuid4())).strip()
+            client_app = (request.headers.get("x-client-app") or request.headers.get("x-client") or "").strip() or None
+
+            mysql_db = MySQLConnector(host=db_host, user=db_username, password=db_password, database=db_name)
+            ensure_request_logs_table(mysql_db)
+            insert_sql = """
+                INSERT INTO request_logs
+                (id, source, client_app, request_id, method, path, original_url, status_code, duration_ms,
+                 ip, user_agent, referer, user_id, role_id, headers, `query`, body, error_message, error_stack)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            mysql_db.execute(
+                insert_sql,
+                (
+                    str(uuid.uuid4()),
+                    "algorithm",
+                    client_app,
+                    request_id,
+                    request.method.upper(),
+                    request.url.path,
+                    str(request.url),
+                    int(status_code),
+                    int(duration_ms),
+                    request.client.host if request.client else None,
+                    request.headers.get("user-agent"),
+                    request.headers.get("referer"),
+                    None,
+                    None,
+                    safe_json(dict(request.headers)),
+                    safe_json(dict(request.query_params)),
+                    body_payload if isinstance(body_payload, str) else safe_json(body_payload),
+                    error_message,
+                    error_stack,
+                ),
+            )
+            mysql_db.close()
+        except Exception:
+            try:
+                if "mysql_db" in locals():
+                    mysql_db.close()
+            except Exception:
+                pass
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+@app.get("/download_document")
+async def download_document(collection_id: str, file_hash: str):
+    if not collection_id:
+        raise HTTPException(status_code=400, detail="缺少collection_id参数")
+    if not file_hash:
+        raise HTTPException(status_code=400, detail="缺少file_hash参数")
+
+    # Basic path traversal protection.
+    if any(x in file_hash for x in ["..", "/", "\\"]):
+        raise HTTPException(status_code=400, detail="file_hash 非法")
+    if not file_hash.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="仅支持 PDF 预览")
+
+    base_dir = os.path.abspath(os.path.join(".", "files", collection_id))
+    file_path = os.path.abspath(os.path.join(base_dir, file_hash))
+    if not file_path.startswith(base_dir + os.sep):
+        raise HTTPException(status_code=400, detail="文件路径非法")
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    return FileResponse(file_path, media_type="application/pdf", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/preview_chunks")
+async def preview_chunks(
+    collection_id: str = Form(...),
+    user: str = Form(...),
+    file_name: str = Form(""),
+    chunk_rule: str = Form("semantic_hybrid"),
+    chunk_size: int = Form(500),
+    chunk_overlap: int = Form(100),
+    min_chunk_size: int = Form(80),
+    file: UploadFile = File(...),
+):
+    if not collection_id:
+        raise HTTPException(status_code=400, detail="collection_id 不能为空")
+    if not user:
+        raise HTTPException(status_code=400, detail="user 不能为空")
+    if not file:
+        raise HTTPException(status_code=400, detail="请上传文件")
+
+    ext = os.path.splitext(file.filename)[1] or ".pdf"
+    tmp_dir = "./files/_preview_tmp"
+    os.makedirs(tmp_dir, exist_ok=True)
+    tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4().hex}{ext}")
+    try:
+        with open(tmp_path, "wb") as f:
+            while content := await file.read(1024 * 1024):
+                f.write(content)
+
+        raw_text = extract_pdf_text(tmp_path)
+        chunks = build_chunks(
+            raw_text,
+            chunk_rule=chunk_rule,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            min_chunk_size=min_chunk_size,
+        )
+        if not chunks:
+            raise HTTPException(status_code=400, detail="根据当前分段策略未生成有效分段，请调整参数")
+
+        lengths = [len(c) for c in chunks]
+        return {
+            "status": "ok",
+            "summary": {
+                "file_name": file_name or file.filename,
+                "chunk_rule": chunk_rule,
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "min_chunk_size": min_chunk_size,
+                "total_chunks": len(chunks),
+                "avg_length": int(sum(lengths) / len(lengths)) if lengths else 0,
+                "min_length": min(lengths) if lengths else 0,
+                "max_length": max(lengths) if lengths else 0,
+            },
+            "preview_chunks": chunks[:10],
+        }
+    finally:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
 
 
 # 上传文档并新增分段
@@ -242,7 +593,11 @@ async def health_check():
 async def upload_and_embed_file(
     collection_id: str = Form(...),
     user: str = Form(...),
-    file_name: str = Form(...),
+    file_name: str = Form(""),
+    chunk_rule: str = Form("semantic_hybrid"),
+    chunk_size: int = Form(500),
+    chunk_overlap: int = Form(100),
+    min_chunk_size: int = Form(80),
     file: UploadFile = File(...)
 ):
     if not collection_id:
@@ -276,7 +631,7 @@ async def upload_and_embed_file(
             return {
                 "status": "success",
                 "message": "文件已存在",
-                "file_id": unique_filename
+                "file_id": new_file_hash
             }
 
         # 保存文件
@@ -286,9 +641,14 @@ async def upload_and_embed_file(
 
         # 处理PDF文件并生成embedding
         try:
-            pdf_loader = PDFFileLoader(file_path)
-            paragraphs = pdf_loader.get_paragraphs()
-            # print(paragraphs)
+            raw_text = extract_pdf_text(file_path)
+            paragraphs = build_chunks(
+                raw_text,
+                chunk_rule=chunk_rule,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                min_chunk_size=min_chunk_size,
+            )
             if not paragraphs:
                 os.remove(file_path)
                 raise HTTPException(status_code=400, detail="PDF文件内容为空")
@@ -296,9 +656,9 @@ async def upload_and_embed_file(
             mysql_db = MySQLConnector(host=db_host, user=db_username, password=db_password, database=db_name)
             # 1. 将 new_file_hash 插入到 documents 表中
             mysql_db.execute("INSERT INTO documents "
-                             "(id, file_name, collection_id, create_by, create_time, update_time) "
-                             "VALUES (%s, %s, %s, %s, NOW(), NOW())",
-                             (new_file_hash, file_name, collection_id, user))
+                             "(id, file_name, file_hash, collection_id, create_by, create_time, update_time) "
+                             "VALUES (%s, %s, %s, %s, %s, NOW(), NOW())",
+                             (new_file_hash, file_name, unique_filename, collection_id, user))
 
             # 2.将 collection 信息同步添加到 Mysql 数据库
             # 判断当前 collection_id 是否存在
@@ -308,10 +668,6 @@ async def upload_and_embed_file(
                 mysql_db.execute("UPDATE collections SET update_time = NOW() WHERE id = %s", (collection_id,))
             # 2.22. 如果不存在，报错
             else:
-                # mysql_db.execute("INSERT INTO collections "
-                #                  "(id, collection_name, create_by, create_time, update_time) "
-                #                  "VALUES (%s, %s, %s, NOW(), NOW())",
-                #                  (collection_id, collection_name, user))
                 raise HTTPException(status_code=400, detail="collection_id 不存在")
 
             # 3. 创建 new_file_hash 对应的表
@@ -327,14 +683,26 @@ async def upload_and_embed_file(
             """
 
             mysql_db.execute(create_table_sql)
-            vector_db.add_documents(paragraphs, table_name, user)
+            vector_db.add_chunk(
+                paragraphs,
+                table_name,
+                user,
+                {
+                    "document_id": new_file_hash,
+                    "file_hash": unique_filename,
+                    "file_name": file_name,
+                    "collection_id": collection_id,
+                },
+            )
 
             mysql_db.close()
             return {
                 "status": "success",
                 "message": "文件上传并处理成功",
                 "file_id": new_file_hash,
-                "paragraph_count": len(paragraphs)
+                "file_hash": unique_filename,
+                "paragraph_count": len(paragraphs),
+                "chunk_rule": chunk_rule,
             }
         except Exception as e:
             os.remove(file_path)
@@ -345,14 +713,14 @@ async def upload_and_embed_file(
 
 
 # 新增一个分段
-@app.post('/add')
+@app.post('/add_chunk')
 async def add_document(request: AddRequest):
     collection_id = request.collection_id
     if not collection_id:
         collection_id = "013573a2_agriculture"
     vector_db = MyVectorDBConnector(collection_id, get_embeddings)
     try:
-        ids = vector_db.add_documents([request.content], request.document_id, request.user)
+        ids = vector_db.add_chunk([request.content], request.document_id, request.user)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"添加失败: {str(e)}")
     return {
@@ -365,14 +733,14 @@ async def add_document(request: AddRequest):
 
 
 # 更新分段内容
-@app.post('/update')
-async def update_document(request: UpdateRequest):
+@app.post('/update_chunk')
+async def update_chunk(request: UpdateRequest):
     collection_id = request.collection_id
     if not collection_id:
         collection_id = "013573a2_agriculture"
     vector_db = MyVectorDBConnector(collection_id, get_embeddings)
     try:
-        vector_db.update_document(request)
+        vector_db.update_chunk(request)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
     return {
@@ -386,8 +754,8 @@ async def update_document(request: UpdateRequest):
 
 
 # 删除某个分段
-@app.post("/delete")
-async def delete_document(request: DeleteRequest):
+@app.post("/delete_chunk")
+async def delete_chunk(request: DeleteRequest):
     id_ = request.id
     collection_id = request.collection_id
     document_id = request.document_id
@@ -395,7 +763,7 @@ async def delete_document(request: DeleteRequest):
         raise HTTPException(status_code=400, detail="缺少必要参数")
     vector_db = MyVectorDBConnector(collection_id, get_embeddings)
     try:
-        vector_db.delete_document(id_, document_id)
+        vector_db.delete_chunk(id_, document_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
     return {
@@ -411,7 +779,7 @@ async def delete_document(request: DeleteRequest):
 
 # 删除某个文档
 @app.post("/delete_document")
-async def delete_document(collection_id: str, document_id: str):
+async def delete_document(collection_id: str, document_id: str, file_hash: str):
     if not document_id or not collection_id:
         raise HTTPException(status_code=400, detail="缺少必要参数")
     vector_db = MyVectorDBConnector(collection_id, get_embeddings)
@@ -419,8 +787,9 @@ async def delete_document(collection_id: str, document_id: str):
     try:
         chunk_ids = mysql_db.query(f"SELECT id FROM `{document_id}`")
         chunk_ids = [item[0] for item in chunk_ids]
-        print(chunk_ids)
-        vector_db.delete_document(chunk_ids, document_id)
+        vector_db.delete_chunk(chunk_ids, document_id)
+        if os.path.exists(f"./files/{collection_id}/{file_hash}"):
+            os.system(f"rm -rf ./files/{collection_id}/{file_hash}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
     return {
@@ -438,11 +807,12 @@ async def delete_document(collection_id: str, document_id: str):
 async def delete_collection(collection_id: str):
     if not collection_id:
         raise HTTPException(status_code=400, detail="缺少必要参数")
+    safe_collection_id = MyVectorDBConnector._to_safe_collection_id(collection_id)
     # 判断向量库路径是否存在
-    if not os.path.exists(f"./chromaDB/{collection_id}"):
+    if not os.path.exists(f"./chromaDB/{safe_collection_id}"):
         raise HTTPException(404, detail="向量库不存在")
     try:
-        os.system(f"rm -rf ./chromaDB/{collection_id}")
+        os.system(f"rm -rf ./chromaDB/{safe_collection_id}")
         # 判断向量库存放文件路径是否存在
         if os.path.exists(f"./files/{collection_id}"):
             os.system(f"rm -rf ./files/{collection_id}")
@@ -455,6 +825,30 @@ async def delete_collection(collection_id: str):
             "id": collection_id
         }
     }
+
+
+# 语音识别
+@app.post("/speech")
+async def speech(model: str = Form(...), file: UploadFile = File(...)):
+    if not model:
+        model = "whisper-1"
+    # 保存到本地临时文件
+    file_path = f"./files/audio/{file.filename}"
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # 再用 SDK 做识别
+    with open(file_path, "rb") as audio_file:
+        try:
+            transcript = client.audio.transcriptions.create(
+                file=audio_file,
+                model=model
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"语音识别失败: {str(e)}")
+
+    return {"text": transcript.text}
 
 
 # 召回分段
@@ -470,11 +864,16 @@ async def recall_chunks(request: RecallRequest):
         raise HTTPException(status_code=400, detail="缺少query参数")
 
     vector_db = MyVectorDBConnector(collection_id, get_embeddings)
-    results = vector_db.search(query, top_n)
+    results = vector_db.collection.query(
+        query_embeddings=vector_db.embedding_fn([query]),
+        n_results=top_n,
+        include=["documents", "distances", "metadatas"],
+    )
 
     ids = results.get('ids', [[]])
     documents = results.get('documents', [[]])
     distances = results.get('distances', [[]])
+    metadatas = results.get('metadatas', [[]])
 
     items = []
     if ids and documents and len(ids) > 0 and len(documents) > 0:
@@ -491,6 +890,15 @@ async def recall_chunks(request: RecallRequest):
                     item["score"] = 1 / (1 + float(distance))
                 except Exception:
                     pass
+            if metadatas and len(metadatas) > 0 and len(metadatas[0]) > index:
+                metadata = metadatas[0][index] or {}
+                item["metadata"] = metadata
+                if metadata.get("document_id"):
+                    item["documentId"] = metadata.get("document_id")
+                if metadata.get("file_hash"):
+                    item["fileHash"] = metadata.get("file_hash")
+                if metadata.get("file_name"):
+                    item["fileName"] = metadata.get("file_name")
             items.append(item)
 
     return {"items": items}
@@ -500,10 +908,14 @@ async def recall_chunks(request: RecallRequest):
 @app.post("/completion")
 async def create_completion(request: QueryRequest):
     collection_id = request.collection_id
-    chat_history = request.chat_history if request.chat_history else ""
-    if not collection_id:
-        collection_id = "test"
-    vector_db = MyVectorDBConnector(collection_id, get_embeddings)
+    # 构建聊天历史字符串
+    chat_history = []
+    if request.chat_history and isinstance(request.chat_history, list):
+        print(request.chat_history)
+        for chat in request.chat_history:
+            chat_history.append(f"{'问' if chat['sender'] else '答'}：{chat['content']}")
+    chat_history = '\n'.join(chat_history)
+
     try:
         query = request.query
         model = request.model
@@ -512,69 +924,65 @@ async def create_completion(request: QueryRequest):
         if not query:
             raise HTTPException(status_code=400, detail="缺少query参数")
 
-        # 查询向量数据库
-        results = vector_db.search(query, 5)
-        if not results['documents']:
-            raise HTTPException(status_code=404, detail="未找到相关分段")
-
-        # 构建提示词
-        prompt_prompt = """
-        你是一个湖北省农技知识问答机器人。
-        你的任务是根据下述给定的已知信息（一般是指导或是建议）回答用户问题。
-        你的回复可以依据下述已知信息。不要编造答案。
-        你的回复对象主要是农户，需要使用通俗易懂的语言进行回答，避免过于专业化的术语。
-        当用户提出的问题为非湖北省农技相关问题时，请直接回答“很抱歉，我目前只能回答湖北省农技相关问题”。
-        已知信息:
-        __INFO__
-        用户问：
-        __QUERY__
-        请用中文回答用户问题，如果无法从已知信息中直接找到答案，可以基于你训练的数据中回答该问题。
-        如果用户表述不明确或是有歧义，可以尝试询问用户是否需要进一步解释，或者提示用户提供更多信息。
-        当用户询问的内容明确，但已有知识库或者已知信息中无法对问题进行回答，请直接回答“很抱歉，我目前还无法回答您提出的问题”。
-        """
-
+        # 构建提示词模板
         system_prompt = """
-        你是一个湖北省农技知识问答机器人。
-        你的任务是根据下述给定的已知信息（一般是指导或是建议）回答用户问题。
-        你的回复可以依据下述已知信息。不要编造答案。
-        下面内容可能包含以往的聊天历史，你需要将聊天历史作为上下文。
-        你的回复对象主要是农户，需要使用通俗易懂的语言进行回答，避免过于专业化的术语。
-        当用户提出的问题为非湖北省农技相关问题时，请直接回答“很抱歉，我目前只能回答湖北省农技相关问题”。
-        请用中文回答用户问题，如果无法从已知信息中直接找到答案，可以基于你训练的数据中回答该问题。
-        如果用户表述不明确或是有歧义，可以尝试询问用户是否需要进一步解释，或者提示用户提供更多信息。
-        当用户询问的内容明确，但已有知识库或者已知信息中无法对问题进行回答，请直接回答“很抱歉，我目前还无法回答您提出的问题”。
+        你是“湖北农业问答助手”，主要服务对象是农户。
+
+        请严格遵守以下回答规则：
+        1. 优先依据本轮提供的信息回答，这些信息是本次回答的首要依据。
+        2. 如果本轮提供的信息不足以直接支持结论，不要把不确定内容当作确定事实输出，更不要编造答案。
+        3. 如果只能给出一般性建议，请用用户容易理解的说法表达，例如“从我现有的知识库来看暂时没有直接提到”“按一般种植经验来看”“我这边现有资料里没有明确写到”。不要使用“知识片段”“已知知识”“参考资料”等系统内部或书面化术语，并提醒用户结合当地情况、作物阶段和田间表现综合判断。
+        4. 如果用户提供的信息不足，请优先提示补充关键信息，例如作物、症状、地块情况、地区、时间、天气等。
+        5. 如果问题明显与农业种植、病虫害、防治、施肥、农事管理无关，请礼貌说明当前主要提供农业相关咨询。
+        6. 使用中文回答，语言要清楚、朴实、易懂，避免过于专业或夸张的表达。
+        7. 不要单独编造政策、标准、药剂用量、产量数据或时间结论；如果资料中没有明确依据，应直接说明资料不足。
+        8. 回答要尽量像正常农技交流，不要反复使用“根据已知知识”“参考资料里”“根据资料”“以上内容来源于”等生硬、模板化表述。
+        9. 如果内容可以直接回答，就直接回答；除非用户主动追问来源，否则不要在正文里重复解释“我是依据什么回答的”。
+        10. 回答时优先先给结论，再分点说明，语气自然，不要像读说明书。
+        11. 当需要说明“资料里没有直接提到”时，优先使用这些自然说法：“我这边现有的知识库里暂时没有直接提到”“我现在掌握的资料里没有明确写到”“这个问题在现有资料里没有直接展开说”，不要使用生硬术语。
+        12. 不要把系统检索到的内容说成“你给的信息”“你提供的资料”。只有用户在本轮明确自己补充了症状、时间、地块、图片等内容时，才能说“你提供的信息”；如果是在说明系统现有资料，请使用“我这边现有的知识库”“我现在掌握的资料”等说法。
+        13. 以下说法禁止出现在回答中：“你给的信息里……”“你提供的信息里……”“参考资料里……”“知识片段里……”“根据已知知识……”。如果想表达同样意思，只能改写为“我这边现有的知识库里……”“我现在掌握的资料里……”“从现有资料来看……”
+        14. 如果用户问的是某个概念、阶段、做法是否明确写在资料里，优先用这样的开头：
+            - “我这边现有的知识库里暂时没有直接提到……”
+            - “从我现在掌握的资料来看，关于……写得不算具体……”
+            - “现有资料里对这部分没有直接展开，我先按一般经验给你说明……”
+        15. 不要把“可用信息”“系统检索到的内容”这些内部输入区块名称直接复述给用户，用户只需要看到自然回答。
         """
 
-        """
-        def build_prompt(prompt_temp, **kwargs):
-            new_prompt = prompt_temp
-            for k, v in kwargs.items():
-                if isinstance(v, str):
-                    val = v
-                elif isinstance(v, list) and all(isinstance(elem, str) for elem in v):
-                    val = '\n'.join(v)
-                else:
-                    val = str(v)
-                new_prompt = new_prompt.replace(f"__{k.upper()}__", val)
-            return new_prompt
-
-        prompt = build_prompt(prompt_template, info=results['documents'][0], query=query)
-        """
-
-        # 查到的相关分段
-        info = results['documents'][0]
-        if isinstance(info, list):  # 如果是 list 则进行合并
-            info_text = "\n".join(info)
+        context_chunks = request.context_chunks or []
+        if context_chunks:
+            info_text = "\n".join([str(item) for item in context_chunks if str(item).strip()])
         else:
-            info_text = info
+            if not collection_id:
+                collection_id = "test"
+            vector_db = MyVectorDBConnector(collection_id, get_embeddings)
+            # 查询向量数据库
+            results = vector_db.search(query, 5)
+            if not results['documents']:
+                raise HTTPException(status_code=404, detail="未找到相关分段")
+
+            # 查到的相关分段
+            info = results['documents'][0]
+            if isinstance(info, list):  # 如果是 list 则进行合并
+                info_text = "\n".join(info)
+            else:
+                info_text = info
 
         message = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"已知信息:\n{info_text}"},
-            {"role": "user", "content": f"聊天历史：\n{chat_history}"},
-            {"role": "user", "content": f"用户问：{query}"}
-        ]
+            {"role": "user", "content": f"""
+请结合系统当前检索到的内容和对话历史回答问题。
 
+【可用信息】：
+{info_text}
+
+【对话历史】：
+{chat_history or "无"}
+
+【用户问题】：
+{query}
+"""}
+        ]
         print(message)
 
         # 生成响应
@@ -587,19 +995,27 @@ async def create_completion(request: QueryRequest):
                     stream=True
                 )
                 for chunk in response:
-                    # yield chunk.model_dump_json() + "\n"
-                    if chunk.choices[0].finish_reason == 'stop':
-                        break
-                    if hasattr(chunk.choices[0].delta, 'content'):
-                        content = chunk.choices[0].delta.content
-                        if content:
-                            yield content
+                    # 适配openai官方的python库结构
+                    if hasattr(chunk, "model_dump"):
+                        chunk_json = chunk.model_dump()
+                    else:
+                        # chunk为dict 或其他兼容结构
+                        chunk_json = chunk
+
+                    # OpenAI官方若finish_reason是stop依然会返回最后一条
+                    # 建议全返回不跳过，也可按需过滤
+                    data_str = f"data: {json.dumps(chunk_json, ensure_ascii=False)}\n\n"
+                    yield data_str
+                yield "data: [DONE]\n\n"
             except Exception as e:
-                yield f"生成回答时出错: {str(e)}"
+                error_data = {"error": str(e)}
+                yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+            # except Exception as e:
+            #     yield f"生成回答时出错: {str(e)}"
 
         return StreamingResponse(
             generate(),
-            media_type="text/plain",
+            media_type="text/event-stream",
             headers={
                 "X-Request-ID": str(uuid.uuid4()),
                 "Cache-Control": "no-cache"
@@ -609,6 +1025,82 @@ async def create_completion(request: QueryRequest):
         raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"处理请求失败: {str(e)}")
+
+
+@app.post("/followup_suggestions")
+async def followup_suggestions(request: FollowUpRequest):
+    try:
+        model = request.model or "gpt-4o-mini"
+        limit = max(1, min(int(request.limit or 3), 8))
+        query = (request.query or "").strip()
+        chat_history = request.chat_history or []
+
+        history_lines = []
+        for chat in chat_history[-12:]:
+            role = "用户" if int(chat.get("sender", 1)) == 1 else "助手"
+            content = str(chat.get("content", "")).strip()
+            if content:
+                history_lines.append(f"{role}：{content}")
+        history_text = "\n".join(history_lines)
+
+        prompt = f"""
+你是湖北农业问答场景的“后续问题推荐器”。
+请基于下面对话，预测用户接下来最可能继续追问的问题。
+
+要求：
+1. 仅输出 JSON，格式必须为：{{"items":["问题1","问题2","问题3"]}}
+2. 只输出问题，不要输出答案、解释、前后缀文字。
+3. 问题要简洁、自然、可直接点击提问，长度 8-40 字。
+4. 问题要和当前对话强相关，避免泛化和重复。
+5. 生成 {limit} 条。
+
+当前用户问题：{query}
+
+近期对话：
+{history_text}
+"""
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "你只返回严格 JSON，不要返回其他内容。"},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.4,
+            stream=False,
+        )
+        content = response.choices[0].message.content if response.choices else ""
+        items = []
+        try:
+            parsed = json.loads(content or "{}")
+            raw_items = parsed.get("items", []) if isinstance(parsed, dict) else []
+            if isinstance(raw_items, list):
+                for item in raw_items:
+                    text = str(item or "").strip()
+                    if text:
+                        items.append(text)
+        except Exception:
+            # 兼容模型偶发非 JSON 输出
+            fallback_lines = re.findall(r'[^\n，。!?！？]{6,40}[？?]?', content or "")
+            for line in fallback_lines:
+                text = line.strip().strip('"').strip("'")
+                if text:
+                    items.append(text)
+
+        # 去重并截断
+        dedup = []
+        seen = set()
+        for item in items:
+            key = item.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            dedup.append(item)
+            if len(dedup) >= limit:
+                break
+        return {"items": dedup}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"后续问题推荐失败: {str(e)}")
 
 
 if __name__ == "__main__":

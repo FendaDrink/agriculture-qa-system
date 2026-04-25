@@ -36,7 +36,6 @@ export interface MessageSourceItem {
 export interface CompletionPayload {
   query: string
   model?: string
-  collectionId?: string
   sessionId: string
   history?: any
 }
@@ -44,7 +43,7 @@ export interface CompletionPayload {
 export interface UserProfile {
   id: string
   username: string
-  city?: string
+  city?: number
   roleId: number
   status: number
   createTime: string
@@ -56,7 +55,6 @@ export interface AppSettings {
   token: string
   userId: string
   model: string
-  collectionId: string
   username: string
 }
 

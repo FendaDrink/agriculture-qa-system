@@ -18,6 +18,9 @@ import dayjs from 'dayjs'
 import type { UserDto } from '../../types/api'
 import { createUser, deleteUser, getUsers, updateUser, updateUserPassword } from '../../api/users'
 import PageHeader from '../../components/PageHeader'
+import AdminEmptyState from '../../components/AdminEmptyState'
+import { CITY_OPTIONS, getCityLabel } from '../../constants/city'
+import { useAuth } from '../../hooks/useAuth'
 
 const roleOptions = [
   { label: '超级管理员', value: 0 },
@@ -30,28 +33,8 @@ const statusOptions = [
   { label: '禁用', value: 1 },
 ]
 
-const cityOptions = [
-  { label: '武汉', value: '武汉' },
-  { label: '黄石', value: '黄石' },
-  { label: '十堰', value: '十堰' },
-  { label: '宜昌', value: '宜昌' },
-  { label: '襄阳', value: '襄阳' },
-  { label: '鄂州', value: '鄂州' },
-  { label: '荆门', value: '荆门' },
-  { label: '孝感', value: '孝感' },
-  { label: '荆州', value: '荆州' },
-  { label: '黄冈', value: '黄冈' },
-  { label: '咸宁', value: '咸宁' },
-  { label: '随州', value: '随州' },
-  { label: '恩施', value: '恩施' },
-  { label: '仙桃', value: '仙桃' },
-  { label: '潜江', value: '潜江' },
-  { label: '天门', value: '天门' },
-  { label: '神农架', value: '神农架' },
-  { label: '湖北省（公共）', value: '湖北省' },
-]
-
 const UserList: React.FC = () => {
+  const { user } = useAuth()
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -60,7 +43,7 @@ const UserList: React.FC = () => {
   const [keyword, setKeyword] = useState('')
   const [roleId, setRoleId] = useState<number | undefined>(undefined)
   const [status, setStatus] = useState<number | undefined>(undefined)
-  const [city, setCity] = useState<string | undefined>(undefined)
+  const [city, setCity] = useState<number | undefined>(undefined)
 
   const [createForm] = Form.useForm()
   const [editForm] = Form.useForm()
@@ -74,14 +57,15 @@ const UserList: React.FC = () => {
   const filteredUsers = useMemo(() => {
     const normalized = keyword.trim().toLowerCase()
     const list = normalized
-      ? data.filter((u) =>
+      ? (data as Array<any>).filter((u: { id: string; username: string; city: string | number }) =>
           u.id.toLowerCase().includes(normalized) ||
           u.username.toLowerCase().includes(normalized) ||
-          (u.city || '').toLowerCase().includes(normalized))
+          getCityLabel(u.city).toLowerCase().includes(normalized))
       : data
-    const byRole = roleId === undefined ? list : list.filter((u) => u.roleId === roleId)
-    const byStatus = status === undefined ? byRole : byRole.filter((u) => u.status === status)
-    const byCity = city === undefined ? byStatus : byStatus.filter((u) => u.city === city)
+    const byRole = roleId === undefined ? list : (list as Array<any>).filter((u: { roleId: number }) => u.roleId === roleId)
+    const byStatus = status === undefined ? byRole : (byRole as Array<any>).filter((u: { status: number }) => u.status === status)
+    const byCity = city === undefined ? byStatus : (byStatus as Array<any>).filter((u: { city: any }) => Number(u.city) === city)
+    // @ts-ignore
     return [...byCity].sort((a, b) => dayjs(b.updateTime).valueOf() - dayjs(a.updateTime).valueOf())
   }, [data, keyword, roleId, status, city])
 
@@ -149,7 +133,7 @@ const UserList: React.FC = () => {
       title: '城市',
       dataIndex: 'city',
       key: 'city',
-      render: (value: string) => value || '-',
+      render: (value: number | string) => getCityLabel(value),
     },
     {
       title: '状态',
@@ -167,7 +151,10 @@ const UserList: React.FC = () => {
     {
       title: '操作',
       key: 'actions',
-      render: (_: unknown, record: UserDto) => (
+      render: (_: unknown, record: UserDto) => {
+        const isCurrentUser = record.id === user?.userId
+
+        return (
         <Space>
           <Button
             onClick={() => {
@@ -193,12 +180,18 @@ const UserList: React.FC = () => {
           </Button>
           <Popconfirm
             title="确认删除该用户？"
+            description="删除后该用户将无法继续登录系统。"
+            overlayClassName="admin-danger-popconfirm"
             onConfirm={() => deleteMutation.mutate(record.id)}
+            disabled={isCurrentUser}
           >
-            <Button danger>删除</Button>
+            <Button danger disabled={isCurrentUser} title={isCurrentUser ? '当前登录用户不能删除自己' : undefined}>
+              删除
+            </Button>
           </Popconfirm>
         </Space>
-      ),
+        )
+      },
     },
   ]
 
@@ -236,7 +229,7 @@ const UserList: React.FC = () => {
               allowClear
               placeholder="城市"
               style={{ width: 170 }}
-              options={cityOptions}
+              options={CITY_OPTIONS}
               value={city}
               onChange={(v) => setCity(v)}
             />
@@ -250,14 +243,31 @@ const UserList: React.FC = () => {
         }
       />
 
-      <Typography.Text className="muted">共 {filteredUsers.length} 个用户</Typography.Text>
+      <div className="admin-toolbar-panel">
+        <div className="admin-toolbar-meta">
+          <span className="admin-summary-chip">当前共 {filteredUsers.length} 个用户</span>
+          {roleId !== undefined ? <span className="admin-summary-chip subtle">已按角色筛选</span> : null}
+          {status !== undefined ? <span className="admin-summary-chip subtle">已按状态筛选</span> : null}
+          {city !== undefined ? <span className="admin-summary-chip subtle">已按城市筛选</span> : null}
+        </div>
+      </div>
 
       <Table
+          className="admin-table"
           rowKey="id"
           loading={isLoading}
           dataSource={filteredUsers}
           columns={columns}
           size="middle"
+          rowClassName={(record) => (Number(record.status) === 1 ? 'admin-row-disabled' : 'admin-row-soft')}
+          locale={{
+            emptyText: (
+              <AdminEmptyState
+                title="暂无用户数据"
+                description="当前没有符合条件的用户记录，可以尝试调整筛选条件或新建用户。"
+              />
+            ),
+          }}
           pagination={{ pageSize: 10, showSizeChanger: true }}
       />
 
@@ -295,7 +305,7 @@ const UserList: React.FC = () => {
             name="city"
             rules={[{ required: true, message: '请选择所属城市' }]}
           >
-            <Select options={cityOptions} placeholder="请选择所属城市" />
+            <Select options={CITY_OPTIONS} placeholder="请选择所属城市" />
           </Form.Item>
           <Form.Item
             label="初始密码"
@@ -360,7 +370,7 @@ const UserList: React.FC = () => {
             name="city"
             rules={[{ required: true, message: '请选择所属城市' }]}
           >
-            <Select options={cityOptions} placeholder="请选择所属城市" />
+            <Select options={CITY_OPTIONS} placeholder="请选择所属城市" />
           </Form.Item>
           <Form.Item
             label="角色"

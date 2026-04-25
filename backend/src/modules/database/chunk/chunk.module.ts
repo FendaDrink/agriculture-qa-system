@@ -9,6 +9,7 @@ import { ChunkController } from './chunk.controller'
 import { ChunkService } from './chunk.service'
 import { DocumentEntity } from '../document/entities/document.entity'
 import { DocumentDAO } from '../document/dao/document.dao'
+import { UserEntity } from '../../user/entities/user.entity'
 
 const RagDataSource = getDataSourceToken('rag')
 
@@ -34,6 +35,7 @@ const RagDataSource = getDataSourceToken('rag')
       inject: [ConfigService],
     }),
     TypeOrmModule.forFeature([DocumentEntity], 'rag'),
+    TypeOrmModule.forFeature([UserEntity]),
     AuthModule,
   ],
   exports: [AuthModule],

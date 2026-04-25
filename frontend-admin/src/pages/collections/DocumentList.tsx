@@ -32,6 +32,7 @@ import {
 } from '../../api/documents'
 import type { DocumentDto } from '../../types/api'
 import { useAuth } from '../../hooks/useAuth'
+import AdminEmptyState from '../../components/AdminEmptyState'
 import PageHeader from '../../components/PageHeader'
 import { fetchDocumentPdf } from '../../api/files'
 
@@ -334,6 +335,8 @@ const DocumentList: React.FC = () => {
             </Button>
             <Popconfirm
               title="确认删除该文件？"
+              description="删除后该文件及其分段将无法恢复。"
+              overlayClassName="admin-danger-popconfirm"
               onConfirm={() => deleteMutation.mutate(record.id)}
             >
               <Button
@@ -401,14 +404,29 @@ const DocumentList: React.FC = () => {
         }
       />
 
-      <Typography.Text className="muted">共 {filteredDocs.length} 个文件</Typography.Text>
+      <div className="admin-toolbar-panel">
+        <div className="admin-toolbar-meta">
+          <span className="admin-summary-chip">当前共 {filteredDocs.length} 个文件</span>
+          {keyword ? <span className="admin-summary-chip subtle">已按关键词检索</span> : null}
+        </div>
+      </div>
 
       <Table
+        className="admin-table"
         rowKey="id"
         loading={isLoading}
         dataSource={filteredDocs}
         columns={columns}
         size="middle"
+        rowClassName={() => 'admin-row-soft'}
+        locale={{
+          emptyText: (
+            <AdminEmptyState
+              title="暂无文件"
+              description="当前向量库下还没有 PDF 文件，可上传资料后继续查看分段。"
+            />
+          ),
+        }}
         onRow={(record) => ({
           onClick: () => {
             navigate(`/collections/${safeCollectionId}/documents/${record.id}/chunks`, {
@@ -424,6 +442,7 @@ const DocumentList: React.FC = () => {
       />
 
       <Modal
+        className="admin-form-modal"
         open={renameOpen}
         title="文件重命名"
         onCancel={() => {
@@ -457,6 +476,7 @@ const DocumentList: React.FC = () => {
       </Modal>
 
       <Modal
+        className="admin-form-modal"
         open={uploadOpen}
         title="上传文件"
         width={720}
@@ -534,6 +554,7 @@ const DocumentList: React.FC = () => {
       </Modal>
 
       <Drawer
+        className="admin-detail-drawer"
         title={previewTitle || 'PDF 预览'}
         placement="right"
         width={920}
@@ -551,21 +572,24 @@ const DocumentList: React.FC = () => {
         destroyOnClose
       >
         {previewLoading ? (
-          <div style={{ height: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="admin-detail-loading" style={{ height: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Spin />
           </div>
         ) : previewUrl ? (
-          <iframe
-            title="pdf-preview"
-            src={previewUrl}
-            style={{ width: '100%', height: '80vh', border: 'none', borderRadius: 8 }}
-          />
+          <div className="admin-preview-frame-shell">
+            <iframe
+              title="pdf-preview"
+              src={previewUrl}
+              style={{ width: '100%', height: '80vh', border: 'none', borderRadius: 8 }}
+            />
+          </div>
         ) : (
-          <Typography.Text className="muted">暂无预览内容</Typography.Text>
+          <AdminEmptyState title="暂无预览内容" description="该文件暂时没有可展示的 PDF 预览。" />
         )}
       </Drawer>
 
       <Drawer
+        className="admin-detail-drawer"
         title="分段预览（前10条）"
         placement="right"
         width={780}
@@ -574,9 +598,9 @@ const DocumentList: React.FC = () => {
         destroyOnClose
       >
         {!chunkPreviewData ? (
-          <Typography.Text className="muted">暂无分段预览内容</Typography.Text>
+          <AdminEmptyState title="暂无分段预览" description="请先上传文件并生成预览，再查看前 10 条分段内容。" />
         ) : (
-          <Space direction="vertical" size={14} style={{ width: '100%' }}>
+          <div className="admin-detail-body">
             <Descriptions bordered column={2} size="small">
               <Descriptions.Item label="分段规则">{chunkPreviewData.summary.chunk_rule}</Descriptions.Item>
               <Descriptions.Item label="总分段数">{chunkPreviewData.summary.total_chunks}</Descriptions.Item>
@@ -585,15 +609,17 @@ const DocumentList: React.FC = () => {
               <Descriptions.Item label="最小长度">{chunkPreviewData.summary.min_chunk_size}</Descriptions.Item>
               <Descriptions.Item label="平均长度">{chunkPreviewData.summary.avg_length}</Descriptions.Item>
             </Descriptions>
-            {chunkPreviewData.preview_chunks.map((item, index) => (
-              <div key={`${index}-${item.slice(0, 12)}`} style={{ border: '1px solid #e7ebef', borderRadius: 8, padding: 12 }}>
-                <Typography.Text strong>{`#${index + 1}`}</Typography.Text>
-                <Typography.Paragraph style={{ marginBottom: 0, marginTop: 6 }}>
-                  {item}
-                </Typography.Paragraph>
-              </div>
-            ))}
-          </Space>
+            <div className="admin-preview-list">
+              {chunkPreviewData.preview_chunks.map((item, index) => (
+                <div key={`${index}-${item.slice(0, 12)}`} className="admin-preview-card">
+                  <Typography.Text strong>{`#${index + 1}`}</Typography.Text>
+                  <Typography.Paragraph style={{ marginBottom: 0, marginTop: 6 }}>
+                    {item}
+                  </Typography.Paragraph>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </Drawer>
 

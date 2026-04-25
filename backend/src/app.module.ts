@@ -17,6 +17,8 @@ import { RequestLogEntity } from './modules/logs/entities/requestLog.entity'
 import { LogsModule } from './modules/logs/logs.module'
 import { FaqModule } from './modules/faq/faq.module'
 import { FaqItemEntity } from './modules/faq/entities/faqItem.entity'
+import { TodoModule } from './modules/todo/todo.module'
+import { TodoItemEntity } from './modules/todo/entities/todoItem.entity'
 
 @Module({
   imports: [
@@ -33,7 +35,7 @@ import { FaqItemEntity } from './modules/faq/entities/faqItem.entity'
         password: configService.get<string>('DB_PASSWORD'), // 数据库密码
         database: configService.get<string>('DB_DATABASE'), // 数据库名称
         timezone: '+08:00', // 设置时区
-        entities: [RoleEntity, UserEntity, UserPwdEntity, ChatSessionEntity, ChatMessageEntity, FaqItemEntity],
+        entities: [RoleEntity, UserEntity, UserPwdEntity, ChatSessionEntity, ChatMessageEntity, FaqItemEntity, TodoItemEntity],
         synchronize: true, // 开发环境中开启自动同步，生产环境应关闭此选项
       }),
       inject: [ConfigService],
@@ -60,6 +62,7 @@ import { FaqItemEntity } from './modules/faq/entities/faqItem.entity'
     ChatModule, // 聊天模块
     LogsModule, // 日志模块
     FaqModule, // 常见问题模块
+    TodoModule, // 待办事项模块
   ],
   controllers: [AppController],
   providers: [AppService],

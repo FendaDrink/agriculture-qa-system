@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer'
 import { IsInt, IsPhoneNumber, IsOptional, IsString } from 'class-validator'
 
 export class UpdateUserDto {
@@ -9,9 +10,10 @@ export class UpdateUserDto {
   @IsOptional()
   username?: string
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
   @IsOptional()
-  city?: string
+  city?: number
 
   @IsInt()
   @IsOptional()

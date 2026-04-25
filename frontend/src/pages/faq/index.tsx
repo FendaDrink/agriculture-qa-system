@@ -25,8 +25,11 @@ const FaqPage = () => {
 
   return (
     <View className='faq-page safe-shell'>
-      <Text className='faq-title'>高频问题参考</Text>
-      <Text className='faq-desc'>根据真实提问自动统计，管理员也会手动维护推荐问题</Text>
+      <View className='faq-hero'>
+        <Text className='faq-kicker'>问题热度库</Text>
+        <Text className='faq-title'>高频问题参考</Text>
+        <Text className='faq-desc'>根据用户真实提问自动统计</Text>
+      </View>
 
       <ScrollView scrollY className='faq-scroll'>
         {faqList.length > 0 ? faqList.map((item) => (

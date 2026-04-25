@@ -12,6 +12,7 @@ import { ExternalApiService } from '../../common/api/externalApi.service'
 import { HttpModule } from '@nestjs/axios'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { ChunkModule } from './chunk/chunk.module'
+import { UserEntity } from '../user/entities/user.entity'
 
 const RagDataSource = getDataSourceToken('rag')
 
@@ -38,6 +39,7 @@ const RagDataSource = getDataSourceToken('rag')
     }),
     ConfigModule,
     TypeOrmModule.forFeature([CollectionEntity, DocumentEntity], 'rag'),
+    TypeOrmModule.forFeature([UserEntity]),
     DocumentModule,
     ChunkModule,
   ],

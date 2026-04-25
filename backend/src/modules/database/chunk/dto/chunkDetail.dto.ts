@@ -13,6 +13,9 @@ export class ChunkDetailDto {
   @IsString()
   createBy: string
 
+  @IsString()
+  username?: string
+
   @IsNotEmpty()
   @IsDate()
   createTime: Date

@@ -2,7 +2,7 @@ export interface AuthTokenPayload {
   userId: string
   username: string
   roleId: number
-  city?: string
+  city?: number | string
   exp?: number
   iat?: number
 }
@@ -11,14 +11,14 @@ export interface AuthUser {
   userId: string
   username: string
   roleId: number
-  city?: string
+  city?: number | string
   token: string
 }
 
 export interface UserDto {
   id: string
   username: string
-  city: string
+  city: number
   roleId: number
   status: number
   createTime: string
@@ -28,8 +28,9 @@ export interface UserDto {
 export interface CollectionDto {
   id: string
   collectionName: string
-  city: string
+  city: number
   createBy: string
+  username?: string
   createTime: string
   updateTime: string
 }
@@ -48,6 +49,7 @@ export interface ChunkDetailDto {
   id: string
   content: string
   createBy: string
+  username?: string
   createTime: string
   updateTime: string
 }

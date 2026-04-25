@@ -1,10 +1,34 @@
-import { Button, Input, ScrollView, Text, View } from '@tarojs/components'
+import { Button, Picker, ScrollView, Text, View } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
-import React, { useState } from 'react'
-import { getCurrentUser, listQuickQuestions, listSessions } from '@/services/chat'
-import { clearAppSettings, getAppSettings, saveAppSettings } from '@/services/settings'
-import { ensureAuthed } from '@/utils/auth'
+import React, { useMemo, useState } from 'react'
+import {
+  getCurrentUser,
+  getWeeklyProgress,
+  listQuickQuestions,
+  listSessions,
+  updateCurrentUser,
+  WeeklyProgressData,
+} from '@/services/chat'
+import { getTodayDateString, listTodayTodos } from '@/services/todo'
+import { getAppSettings, saveAppSettings } from '@/services/settings'
+import { ChatSession } from '@/types/chat'
+import { getCityNameByCode, HUBEI_CITY_OPTIONS } from '@/constants/city'
 import './index.scss'
+
+const ACTIVE_SESSION_KEY = 'agri:chat:active-session-id'
+
+const emptyProgress: WeeklyProgressData = {
+  rangeStart: '',
+  rangeEnd: '',
+  totalSessions: 0,
+  totalQuestions: 0,
+  days: [],
+}
+
+const formatTime = (value?: string) => {
+  if (!value) return '-'
+  return String(value).replace('T', ' ').slice(0, 16)
+}
 
 const ProfilePage = () => {
   const [settings, setSettings] = useState(getAppSettings())
@@ -12,10 +36,20 @@ const ProfilePage = () => {
   const [recommendCount, setRecommendCount] = useState(0)
   const [roleName, setRoleName] = useState('普通用户')
   const [city, setCity] = useState('-')
-  const [showToken, setShowToken] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState(false)
+  const [cityCode, setCityCode] = useState(1)
+  const [updatingCity, setUpdatingCity] = useState(false)
+  const [weeklyProgress, setWeeklyProgress] = useState<WeeklyProgressData>(emptyProgress)
+  const [todayTodoTotal, setTodayTodoTotal] = useState(0)
+  const [todayTodoDone, setTodayTodoDone] = useState(0)
+  const [recentSessions, setRecentSessions] = useState<ChatSession[]>([])
   const loggedIn = Boolean(settings.token && settings.userId && settings.username)
+  const cityRange = HUBEI_CITY_OPTIONS.map((item) => item.name)
+  const cityIndex = Math.max(0, HUBEI_CITY_OPTIONS.findIndex((item) => item.code === cityCode))
+
+  const progressRate = useMemo(() => {
+    if (!todayTodoTotal) return 0
+    return Math.min(100, Math.round((todayTodoDone / todayTodoTotal) * 100))
+  }, [todayTodoDone, todayTodoTotal])
 
   const sync = async () => {
     const info = getAppSettings()
@@ -25,221 +59,202 @@ const ProfilePage = () => {
       setRecommendCount(0)
       setRoleName('普通用户')
       setCity('-')
+      setCityCode(1)
+      setWeeklyProgress(emptyProgress)
+      setTodayTodoTotal(0)
+      setTodayTodoDone(0)
+      setRecentSessions([])
       return
     }
-    try {
-      const [user, sessions, recommend] = await Promise.all([
-        getCurrentUser().catch(() => null),
-        listSessions().catch(() => []),
-        listQuickQuestions(20).catch(() => []),
-      ])
-      setSessionCount(sessions.length)
-      setRecommendCount(recommend.length)
-      setRoleName(user?.roleId === 0 ? '超级管理员' : user?.roleId === 1 ? '管理员' : '普通用户')
-      setCity(user?.city || '-')
-    } catch {
-      // ignore
-    }
+
+    const [user, sessions, recommend] = await Promise.all([
+      getCurrentUser().catch(() => null),
+      listSessions().catch(() => []),
+      listQuickQuestions(20).catch(() => []),
+    ])
+
+    setSessionCount(sessions.length)
+    setRecentSessions(sessions.slice(0, 3))
+    setRecommendCount(recommend.length)
+    setRoleName(user?.roleId === 0 ? '超级管理员' : user?.roleId === 1 ? '管理员' : '普通用户')
+    setCity(getCityNameByCode(user?.city))
+    setCityCode(Number(user?.city) || 1)
+    const [progress, todos] = await Promise.all([
+      getWeeklyProgress().catch(() => emptyProgress),
+      listTodayTodos().catch(() => []),
+    ])
+    setWeeklyProgress(progress)
+    setTodayTodoTotal(todos.length)
+    setTodayTodoDone(todos.filter((item) => item.done).length)
   }
 
   useDidShow(() => {
-    ;(async () => {
-      if (!await ensureAuthed()) return
-      await sync()
-    })()
+    sync()
   })
 
-  const logout = async() => {
+  const logout = async () => {
     saveAppSettings({ token: '', userId: '', username: '' })
     setSettings(getAppSettings())
     setSessionCount(0)
     setRecommendCount(0)
+    setWeeklyProgress(emptyProgress)
+    setTodayTodoTotal(0)
+    setTodayTodoDone(0)
+    setRecentSessions([])
     await Taro.showToast({ title: '已退出登录', icon: 'none' })
-    await Taro.switchTab({ url: '/pages/home/index' })
   }
 
-  const saveConnection = async () => {
-    if (!settings.baseUrl.trim()) {
-      await Taro.showToast({ title: '后端地址不能为空', icon: 'none' })
-      return
-    }
-    if (!/^https?:\/\//i.test(settings.baseUrl.trim())) {
-      await Taro.showToast({ title: '后端地址需以 http/https 开头', icon: 'none' })
-      return
-    }
-    setSaving(true)
-    saveAppSettings({
-      baseUrl: settings.baseUrl.trim(),
-      model: settings.model.trim() || 'gpt-3.5-turbo-1106',
-      collectionId: settings.collectionId.trim(),
-      userId: settings.userId.trim(),
-      username: settings.username.trim(),
-    })
-    setSaving(false)
-    await Taro.showToast({ title: '设置已保存', icon: 'none' })
+  const openSession = async (sessionId: string) => {
+    if (!sessionId) return
+    Taro.setStorageSync(ACTIVE_SESSION_KEY, sessionId)
+    await Taro.switchTab({ url: '/pages/chat/index' })
   }
 
-  const testConnection = async () => {
-    const baseUrl = settings.baseUrl.trim().replace(/\/$/, '')
-    if (!baseUrl) {
-      await Taro.showToast({ title: '请先填写后端地址', icon: 'none' })
+  const onChangeCity = async (nextCode: number) => {
+    if (!loggedIn) {
+      Taro.showToast({ title: '请先登录后再切换城市', icon: 'none' })
       return
     }
-    setTesting(true)
+    if (!nextCode || nextCode === cityCode || updatingCity) return
     try {
-      const res = await Taro.request({
-        url: `${baseUrl}/health`,
-        method: 'GET',
-        timeout: 8000,
-      })
-      if (res.statusCode >= 200 && res.statusCode < 400) {
-        await Taro.showToast({ title: '连接成功', icon: 'success' })
-      } else {
-        await Taro.showToast({ title: `连接失败(${res.statusCode})`, icon: 'none' })
-      }
+      setUpdatingCity(true)
+      const user = await updateCurrentUser({ city: nextCode })
+      setCity(getCityNameByCode(user.city))
+      setCityCode(Number(user.city) || nextCode)
+      await sync()
+      await Taro.showToast({ title: '城市已更新', icon: 'none' })
     } catch (error) {
-      await Taro.showToast({ title: '连接失败，请检查地址/网络', icon: 'none' })
+      await Taro.showToast({ title: (error as Error)?.message || '城市更新失败', icon: 'none' })
     } finally {
-      setTesting(false)
+      setUpdatingCity(false)
     }
-  }
-
-  const copyToken = async () => {
-    if (!settings.token.trim()) {
-      await Taro.showToast({ title: '暂无 Token', icon: 'none' })
-      return
-    }
-    await Taro.setClipboardData({ data: settings.token })
-    await Taro.showToast({ title: 'Token 已复制', icon: 'none' })
-  }
-
-  const resetLocal = async () => {
-    const ret = await Taro.showModal({
-      title: '清空本地设置',
-      content: '将清空本地地址、模型、用户和登录信息，是否继续？',
-      confirmText: '确认',
-      cancelText: '取消',
-    })
-    if (!ret.confirm) return
-    clearAppSettings()
-    setSettings(getAppSettings())
-    setSessionCount(0)
-    setRecommendCount(0)
-    await Taro.showToast({ title: '已清空', icon: 'none' })
   }
 
   return (
     <ScrollView scrollY className='profile-page safe-shell'>
-      {!loggedIn && (
-        <View className='notice'>
-          <Text className='notice-title'>未登录</Text>
-          <Text className='notice-desc'>前往登录页输入后端地址、用户ID与密码以获取访问权限。</Text>
-          <Button
-            className='login-shortcut'
-            size='mini'
-            onClick={() => Taro.navigateTo({ url: '/pages/login/index' })}
+      <View className='profile-hero'>
+        <View className='avatar'>{(settings.username || '农').slice(0, 1)}</View>
+        <View className='hero-main'>
+          <Text className='hero-name'>{settings.username || '游客'}</Text>
+          <Text className='hero-sub'>{loggedIn ? `${roleName} · ${city}` : '登录后可查看个人信息'}</Text>
+          {settings.userId && <Text className='hero-id'>ID：{settings.userId || '-'}</Text>}
+        </View>
+        {loggedIn ? (
+          <Picker
+            mode='selector'
+            range={cityRange}
+            value={cityIndex}
+            onChange={(e) => {
+              const nextIndex = Number((e as any).detail?.value || 0)
+              onChangeCity(HUBEI_CITY_OPTIONS[nextIndex]?.code || 1)
+            }}
           >
-            去登录
+            <View className={`city-switch city-switch-profile ${updatingCity ? 'disabled' : ''}`}>
+              <Text className='city-switch-label'>{updatingCity ? '更新中' : '切换城市'}</Text>
+            </View>
+          </Picker>
+        ) : null}
+      </View>
+
+      <View className='stats-grid'>
+        <View className='stat-card'>
+          <Text className='stat-value'>{weeklyProgress.totalQuestions}</Text>
+          <Text className='stat-label'>本周提问</Text>
+        </View>
+        <View className='stat-card'>
+          <Text className='stat-value'>{sessionCount}</Text>
+          <Text className='stat-label'>历史会话</Text>
+        </View>
+        <View className='stat-card'>
+          <Text className='stat-value'>{todayTodoDone}/{todayTodoTotal}</Text>
+          <Text className='stat-label'>今日待办</Text>
+        </View>
+        <View className='stat-card'>
+          <Text className='stat-value'>{recommendCount}</Text>
+          <Text className='stat-label'>可用问题</Text>
+        </View>
+      </View>
+
+      <View className='profile-card'>
+        <View className='card-head'>
+          <Text className='profile-title'>今天的待办进度</Text>
+          <Text className='card-head-meta'>{getTodayDateString()}</Text>
+        </View>
+        <View className='progress-track'>
+          <View className='progress-fill' style={{ width: `${progressRate}%` }} />
+        </View>
+        <Text className='progress-text'>
+          {todayTodoTotal ? `今日已完成 ${todayTodoDone} 项，完成率 ${progressRate}%` : '今日暂无待办事项'}
+        </Text>
+        <Button className='action-btn primary' size='mini' onClick={() => Taro.switchTab({ url: '/pages/todo/index' })}>
+          查看待办
+        </Button>
+      </View>
+
+      <View className='profile-card'>
+        <View className='card-head'>
+          <Text className='profile-title'>最近提问记录</Text>
+          <Text className='card-head-meta'>点击可继续查看</Text>
+        </View>
+        {recentSessions.length > 0 ? (
+          <View className='session-list'>
+            {recentSessions.map((item) => (
+              <View key={item.id} className='session-item' onClick={() => openSession(item.id)}>
+                <Text className='session-title'>{item.title || '未命名会话'}</Text>
+                <Text className='session-time'>更新时间：{formatTime(item.updateTime)}</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text className='empty-text'>暂无提问记录，提交问题后会显示在这里。</Text>
+        )}
+        <View className='action-row'>
+          <Button className='action-btn' size='mini' onClick={() => Taro.navigateTo({ url: '/pages/sessions/index' })}>
+            会话管理
+          </Button>
+          <Button className='action-btn primary' size='mini' onClick={() => Taro.switchTab({ url: '/pages/chat/index' })}>
+            去咨询
           </Button>
         </View>
-      )}
-
-      <View className='hero-card'>
-        <Text className='hero-name'>{settings.username || '未登录用户'}</Text>
-        <Text className='hero-meta'>ID：{settings.userId || '-'}</Text>
-        <Text className='hero-meta'>角色：{roleName} · 城市：{city}</Text>
       </View>
 
-      <View className='stats-row'>
-        <View className='stat-item'>
-          <Text className='stat-value'>{sessionCount}</Text>
-          <Text className='stat-label'>我的会话</Text>
+      <View className='profile-card accent-card'>
+        <View className='card-head'>
+          <Text className='profile-title'>这周使用情况</Text>
+          <Text className='card-head-meta'>{weeklyProgress.rangeStart || '近7天'}</Text>
         </View>
-        <View className='stat-item'>
-          <Text className='stat-value'>{recommendCount}</Text>
-          <Text className='stat-label'>可用引导题</Text>
-        </View>
-        <View className='stat-item'>
-          <Text className='stat-value'>{loggedIn ? '已登录' : '未登录'}</Text>
-          <Text className='stat-label'>当前状态</Text>
-        </View>
-      </View>
-
-      <View className='profile-card'>
-        <Text className='profile-title'>快捷入口</Text>
-        <View className='action-row'>
-          <Button className='action-btn' size='mini' onClick={() => Taro.switchTab({ url: '/pages/chat/index' })}>去问答</Button>
-          <Button className='action-btn' size='mini' onClick={() => Taro.switchTab({ url: '/pages/faq/index' })}>看高频问题</Button>
-          <Button className='action-btn' size='mini' onClick={() => Taro.navigateTo({ url: '/pages/sessions/index' })}>会话管理</Button>
+        <View className='insight-row'>
+          <View className='insight-item'>
+            <Text className='insight-value'>{weeklyProgress.totalQuestions}</Text>
+            <Text className='insight-label'>这周提问</Text>
+          </View>
+          <View className='insight-item'>
+            <Text className='insight-value'>{weeklyProgress.totalSessions}</Text>
+            <Text className='insight-label'>会话次数</Text>
+          </View>
+          <View className='insight-item'>
+            <Text className='insight-value'>{progressRate}%</Text>
+            <Text className='insight-label'>今日待办完成率</Text>
+          </View>
         </View>
       </View>
 
       <View className='profile-card'>
-        <Text className='profile-title'>连接与模型设置</Text>
-        <Text className='field-label'>后端地址</Text>
-        <Input
-          className='field-input'
-          value={settings.baseUrl}
-          onInput={(e) => setSettings((prev) => ({ ...prev, baseUrl: e.detail.value }))}
-          placeholder='http://192.168.71.118:3000'
-        />
-        <Text className='field-label'>默认模型</Text>
-        <Input
-          className='field-input'
-          value={settings.model}
-          onInput={(e) => setSettings((prev) => ({ ...prev, model: e.detail.value }))}
-          placeholder='gpt-3.5-turbo-1106'
-        />
-        <Text className='field-label'>默认知识库ID</Text>
-        <Input
-          className='field-input'
-          value={settings.collectionId}
-          onInput={(e) => setSettings((prev) => ({ ...prev, collectionId: e.detail.value }))}
-          placeholder='kb_xxx'
-        />
-        <View className='action-row'>
-          <Button className='action-btn primary' size='mini' loading={saving} onClick={saveConnection}>保存设置</Button>
-          <Button className='action-btn' size='mini' loading={testing} onClick={testConnection}>测试连接</Button>
+        <View className='card-head'>
+          <Text className='profile-title'>账号管理</Text>
         </View>
-      </View>
-
-      <View className='profile-card'>
-        <Text className='profile-title'>账号与安全</Text>
-        <Text className='field-label'>用户ID</Text>
-        <Input
-          className='field-input'
-          value={settings.userId}
-          onInput={(e) => setSettings((prev) => ({ ...prev, userId: e.detail.value }))}
-          placeholder='请输入用户ID'
-        />
-        <Text className='field-label'>昵称</Text>
-        <Input
-          className='field-input'
-          value={settings.username}
-          onInput={(e) => setSettings((prev) => ({ ...prev, username: e.detail.value }))}
-          placeholder='登录后自动填充'
-        />
-        <Text className='field-label'>Token</Text>
-        <Text className='token-box'>{showToken ? (settings.token || '-') : (settings.token ? '••••••••••••••••' : '-')}</Text>
-        <View className='action-row'>
-          <Button className='action-btn' size='mini' onClick={() => setShowToken((v) => !v)}>{showToken ? '隐藏Token' : '显示Token'}</Button>
-          <Button className='action-btn' size='mini' onClick={copyToken}>复制Token</Button>
-          {!loggedIn ? (
-            <Button className='action-btn primary' size='mini' onClick={() => Taro.navigateTo({ url: '/pages/login/index' })}>去登录</Button>
-          ) : null}
-        </View>
-      </View>
-
-      <View className='profile-card'>
-        <Text className='profile-title'>数据与退出</Text>
-        <View className='action-row'>
-          <Button className='action-btn warn' size='mini' onClick={resetLocal}>清空本地设置</Button>
-          {loggedIn ? (
+        {loggedIn ? (
+          <View className='action-row'>
+            <Button className='action-btn' size='mini' onClick={() => Taro.navigateTo({ url: '/pages/login/index' })}>切换账号</Button>
             <Button className='action-btn danger' size='mini' onClick={logout}>退出登录</Button>
-          ) : null}
-        </View>
+          </View>
+        ) : (
+          <View className='action-row'>
+            <Button className='action-btn primary' size='mini' onClick={() => Taro.navigateTo({ url: '/pages/login/index' })}>去登录</Button>
+            <Button className='action-btn' size='mini' onClick={() => Taro.navigateTo({ url: '/pages/register/index' })}>去注册</Button>
+          </View>
+        )}
       </View>
-
     </ScrollView>
   )
 }

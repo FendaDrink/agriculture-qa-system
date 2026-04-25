@@ -49,6 +49,11 @@ const SessionsPage = () => {
 
   return (
     <View className='session-page container safe-shell'>
+      <View className='session-hero'>
+        <Text className='session-hero-badge'>会话档案</Text>
+        <Text className='session-hero-title'>管理你的历史会话</Text>
+        <Text className='session-hero-desc'>新建、切换和整理会话，让追问过程更连贯。</Text>
+      </View>
       <View className='session-create card'>
         <Input
           value={newTitle}

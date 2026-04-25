@@ -17,6 +17,7 @@ import { PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import PageHeader from '../../components/PageHeader'
+import AdminEmptyState from '../../components/AdminEmptyState'
 import {
   createManualFaq,
   deleteManualFaq,
@@ -174,6 +175,8 @@ const FaqManage: React.FC = () => {
           </Button>
           <Popconfirm
             title="确认删除这条问题？"
+            description="删除后该手动维护问题将不再展示。"
+            overlayClassName="admin-danger-popconfirm"
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
             <Button danger>删除</Button>
@@ -244,6 +247,8 @@ const FaqManage: React.FC = () => {
           </Button>
           <Popconfirm
             title="确认删除这条高频问题展示？"
+            description="删除后将撤销当前高频问题的展示配置。"
+            overlayClassName="admin-danger-popconfirm"
             onConfirm={() => overrideMutation.mutate({
               originQuestion: record.question,
               question: record.question,
@@ -282,7 +287,8 @@ const FaqManage: React.FC = () => {
         }
       />
 
-      <Space wrap style={{ marginBottom: 12 }}>
+      <div className="admin-toolbar-panel">
+        <Space wrap style={{ marginBottom: 0 }}>
         <Input.Search
           allowClear
           placeholder="搜索问题内容"
@@ -304,14 +310,29 @@ const FaqManage: React.FC = () => {
             setPage(1)
           }}
         />
-      </Space>
+        </Space>
+        <div className="admin-toolbar-meta">
+          <span className="admin-summary-chip">手动问题 {manualData?.total || 0} 条</span>
+          <span className="admin-summary-chip subtle">自动高频 {highData?.items?.length || 0} 条</span>
+        </div>
+      </div>
 
       <Typography.Title level={5} style={{ marginTop: 8 }}>手动维护问题</Typography.Title>
       <Table
+        className="admin-table"
         rowKey="id"
         loading={isLoading}
         dataSource={manualData?.items || []}
         columns={manualColumns}
+        rowClassName={(record) => (Number(record.status) === 0 ? 'admin-row-disabled' : record.originQuestion ? 'admin-row-info' : '')}
+        locale={{
+          emptyText: (
+            <AdminEmptyState
+              title="暂无手动问题"
+              description="当前还没有手动维护的问题，新增后可优先在前台展示。"
+            />
+          ),
+        }}
         pagination={{
           current: page,
           pageSize,
@@ -326,10 +347,20 @@ const FaqManage: React.FC = () => {
 
       <Typography.Title level={5} style={{ marginTop: 18 }}>自动高频问题</Typography.Title>
       <Table
+        className="admin-table"
         rowKey="id"
         loading={highLoading}
         dataSource={highData?.items || []}
         columns={highColumns}
+        rowClassName={() => 'admin-row-soft'}
+        locale={{
+          emptyText: (
+            <AdminEmptyState
+              title="暂无自动高频问题"
+              description="系统会根据真实提问情况生成高频问题列表。"
+            />
+          ),
+        }}
         pagination={false}
       />
 

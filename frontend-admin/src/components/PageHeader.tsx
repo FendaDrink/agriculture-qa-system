@@ -27,14 +27,17 @@ const PageHeader: React.FC<PageHeaderProps> = ({ title, subtitle, extra, breadcr
 
   return (
     <div className="page-header">
-      <Space direction="vertical" size={4}>
-        {breadcrumb && breadcrumb.length > 0 ? <Breadcrumb items={breadcrumbItems} /> : null}
-        <Typography.Title level={4} style={{ margin: 0 }}>
+      <Space direction="vertical" size={6} className="page-header-copy">
+        <Typography.Text className="page-header-kicker">
+          {breadcrumb && breadcrumb.length > 0 ? breadcrumb[0].title : '后台管理'}
+        </Typography.Text>
+        {breadcrumb && breadcrumb.length > 0 ? <Breadcrumb className="page-header-breadcrumb" items={breadcrumbItems} /> : null}
+        <Typography.Title level={4} style={{ margin: 0 }} className="page-header-title">
           {title}
         </Typography.Title>
         {subtitle ? <Typography.Text className="muted">{subtitle}</Typography.Text> : null}
       </Space>
-      {extra ? <div>{extra}</div> : null}
+      {extra ? <div className="page-header-extra">{extra}</div> : null}
     </div>
   )
 }

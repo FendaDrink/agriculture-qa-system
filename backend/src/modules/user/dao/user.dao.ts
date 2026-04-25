@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { EntityManager, Repository } from 'typeorm'
 import { UserEntity } from '../entities/user.entity'
 import { UserDto } from '../dto/user.dto'
+import { cityNameToCode } from '../../../common/constants/city'
 
 @Injectable()
 export class UserDAO {
@@ -15,7 +16,8 @@ export class UserDAO {
    * 查找所有用户
    */
   async findAllUsers(): Promise<UserDto[]> {
-    return this.userRepository.find()
+    const users = await this.userRepository.find()
+    return users.map((item) => this.toUserDto(item))
   }
 
   /**
@@ -23,7 +25,7 @@ export class UserDAO {
    * @param userDto
    * @param manager
    */
-  async createUser(userDto: Partial<UserDto>, manager: EntityManager): Promise<UserDto> {
+  async createUser(userDto: Partial<UserEntity>, manager: EntityManager): Promise<UserEntity> {
     const userEntity = manager.create(UserEntity, userDto) // 创建 User 实体
     return manager.save(userEntity) //保存至数据库中
   }
@@ -32,10 +34,11 @@ export class UserDAO {
    * 根据用户ID查找用户
    * @param id
    */
-  async findUserById(id: string): Promise<UserDto> {
-    return this.userRepository.findOne({
+  async findUserById(id: string): Promise<UserDto | null> {
+    const user = await this.userRepository.findOne({
       where: { id },
     }) // 查找用户
+    return user ? this.toUserDto(user) : null
   }
 
   /**
@@ -43,9 +46,12 @@ export class UserDAO {
    * @param userDto
    * @param manager
    */
-  async updateUser(userDto: UserDto, manager: EntityManager): Promise<UserDto> {
-    const user = await manager.preload(UserEntity, userDto) // 更新用户
-    return manager.save(user)
+  async updateUser(userDto: Partial<UserEntity>, manager: EntityManager): Promise<UserEntity> {
+    const user = await manager.preload(UserEntity, userDto as any) // 更新用户
+    if (!user) {
+      throw new Error('用户不存在')
+    }
+    return manager.save(user as UserEntity)
   }
 
   /**
@@ -60,6 +66,7 @@ export class UserDAO {
   toUserDto(user: UserEntity): UserDto {
     return {
       ...user,
+      city: cityNameToCode((user as any)?.city),
     }
   }
 }

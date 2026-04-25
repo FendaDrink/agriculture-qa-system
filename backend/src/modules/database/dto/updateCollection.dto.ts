@@ -1,4 +1,6 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator'
+import { Transform, Type } from 'class-transformer'
+import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator'
+import { cityNameToCode, HubeiCityCode } from '../../../common/constants/city'
 
 export class UpdateCollectionDto {
   @IsString()
@@ -13,7 +15,9 @@ export class UpdateCollectionDto {
   @IsNotEmpty()
   createBy: string
 
+  @Transform(({ value }) => cityNameToCode(value, HubeiCityCode.HUBEI_PROVINCE))
+  @Type(() => Number)
+  @IsInt()
   @IsOptional()
-  @IsString()
-  city?: string
+  city?: number
 }

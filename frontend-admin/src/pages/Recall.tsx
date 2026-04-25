@@ -5,6 +5,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { getCollections, searchCollections } from '../api/collections'
 import { recallChunks } from '../api/recall'
 import { useAuth } from '../hooks/useAuth'
+import AdminEmptyState from '../components/AdminEmptyState'
 import CopyButton from '../components/CopyButton'
 import PageHeader from '../components/PageHeader'
 
@@ -109,16 +110,33 @@ const Recall: React.FC = () => {
         </Form>
       </Card>
 
-      <Typography.Text className="muted">
-        {recallMutation.isSuccess ? `共召回 ${items.length} 条结果` : '尚未召回'}
-      </Typography.Text>
+      <div className="admin-toolbar-panel">
+        <div className="admin-toolbar-meta">
+          <span className="admin-summary-chip">
+            {recallMutation.isSuccess ? `共召回 ${items.length} 条结果` : '尚未发起召回'}
+          </span>
+          {recallMutation.isSuccess && items.length > 0 ? <span className="admin-summary-chip subtle">结果按匹配度排序</span> : null}
+        </div>
+      </div>
 
       <List
         className="fixed-card-list"
         loading={recallMutation.isPending}
-        grid={{ gutter: 16, xs: 1, sm: 1, md: 2, lg: 2, xl: 2 }}
+        grid={{ gutter: [16, 16], xs: 1, sm: 1, md: 2, lg: 3, xl: 4, xxl: 5 }}
         dataSource={items}
-        locale={{ emptyText: recallMutation.isSuccess ? '没有召回结果' : '请先发起召回' }}
+        locale={{
+          emptyText: recallMutation.isSuccess ? (
+            <AdminEmptyState
+              title="没有召回结果"
+              description="当前问题在所选知识库中没有匹配分段，可尝试换一种表述或调整知识库。"
+            />
+          ) : (
+            <AdminEmptyState
+              title="请先发起召回"
+              description="选择知识库并输入问题后，系统会在这里展示最匹配的分段结果。"
+            />
+          ),
+        }}
         renderItem={(item, index) => (
           <List.Item>
             <Card

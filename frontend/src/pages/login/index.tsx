@@ -37,17 +37,22 @@ const LoginPage = () => {
   return (
     <View className='login-page safe-shell safe-top'>
       <View className='hero'>
-        <Text className='hero-badge'>湖北农业 AI</Text>
-        <Text className='title'>农业智能问答助手</Text>
-        <Text className='subtitle'>登录后可使用病虫害诊断、种植问答与知识库检索能力</Text>
+        <Text className='hero-badge'>湖北农业问答</Text>
+        <Text className='title'>湖北省农业问答助手</Text>
+        <Text className='subtitle'>登录后可查看提问记录、待办事项，并继续此前的咨询内容</Text>
+
       </View>
       <View className='form'>
-        <Text className='label'>用户ID（手机号）</Text>
+        <View className='form-head'>
+          <Text className='form-kicker'>账号登录</Text>
+          <Text className='form-title'>登录后即可开始使用</Text>
+        </View>
+        <Text className='label'>账号</Text>
         <Input
           className='input'
           value={userId}
           onInput={(e) => setUserId(e.detail.value)}
-          placeholder='请输入用户ID'
+          placeholder='请输入手机号'
         />
 
         <Text className='label'>密码</Text>
@@ -62,6 +67,14 @@ const LoginPage = () => {
         <Button className='login-btn' loading={loading} onClick={onSubmit}>
           登录
         </Button>
+        <Button
+          className='register-btn'
+          disabled={loading}
+          onClick={() => Taro.navigateTo({ url: '/pages/register/index' })}
+        >
+          还没有账号？去注册
+        </Button>
+        <Text className='form-tip soft'>建议使用手机号登录，系统会根据所在城市提供更合适的参考内容。</Text>
       </View>
     </View>
   )

@@ -1,4 +1,6 @@
-import { IsDate, IsOptional, IsString } from 'class-validator'
+import { Transform, Type } from 'class-transformer'
+import { IsDate, IsInt, IsOptional, IsString } from 'class-validator'
+import { cityNameToCode, HubeiCityCode } from '../../../common/constants/city'
 
 export class SearchCollectionDto {
   @IsOptional()
@@ -13,9 +15,11 @@ export class SearchCollectionDto {
   @IsString()
   createBy?: string
 
+  @Transform(({ value }) => value === undefined || value === '' ? undefined : cityNameToCode(value, HubeiCityCode.HUBEI_PROVINCE))
+  @Type(() => Number)
+  @IsInt()
   @IsOptional()
-  @IsString()
-  city?: string
+  city?: number
 
   @IsOptional()
   @IsDate()

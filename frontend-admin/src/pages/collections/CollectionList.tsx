@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Typography, message } from 'antd'
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons'
+import { EnvironmentOutlined, FolderOpenOutlined, PlusOutlined, ReloadOutlined, UserOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { useNavigate } from 'react-router-dom'
@@ -14,27 +14,8 @@ import {
 import type { CollectionDto } from '../../types/api'
 import { useAuth } from '../../hooks/useAuth'
 import PageHeader from '../../components/PageHeader'
-
-const cityOptions = [
-  { label: '武汉', value: '武汉' },
-  { label: '黄石', value: '黄石' },
-  { label: '十堰', value: '十堰' },
-  { label: '宜昌', value: '宜昌' },
-  { label: '襄阳', value: '襄阳' },
-  { label: '鄂州', value: '鄂州' },
-  { label: '荆门', value: '荆门' },
-  { label: '孝感', value: '孝感' },
-  { label: '荆州', value: '荆州' },
-  { label: '黄冈', value: '黄冈' },
-  { label: '咸宁', value: '咸宁' },
-  { label: '随州', value: '随州' },
-  { label: '恩施', value: '恩施' },
-  { label: '仙桃', value: '仙桃' },
-  { label: '潜江', value: '潜江' },
-  { label: '天门', value: '天门' },
-  { label: '神农架', value: '神农架' },
-  { label: '湖北省（公共）', value: '湖北省' },
-]
+import AdminEmptyState from '../../components/AdminEmptyState'
+import { CITY_OPTIONS, getCityLabel } from '../../constants/city'
 
 const CollectionList: React.FC = () => {
   const { user } = useAuth()
@@ -43,7 +24,7 @@ const CollectionList: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<CollectionDto | null>(null)
   const [keyword, setKeyword] = useState('')
-  const [city, setCity] = useState<string | undefined>(undefined)
+  const [city, setCity] = useState<number | undefined>(undefined)
   const [form] = Form.useForm()
 
   const isAdmin = useMemo(() => user?.roleId === 0 || user?.roleId === 1, [user])
@@ -66,11 +47,11 @@ const CollectionList: React.FC = () => {
             item.collectionName.toLowerCase().includes(normalized) ||
             item.id.toLowerCase().includes(normalized) ||
             item.createBy.toLowerCase().includes(normalized) ||
-            (item.city || '').toLowerCase().includes(normalized)
+            getCityLabel(item.city).toLowerCase().includes(normalized)
           )
         })
       : data
-    const byCity = city === undefined ? list : list.filter((item) => item.city === city)
+    const byCity = city === undefined ? list : list.filter((item) => Number(item.city) === city)
     return [...byCity].sort((a, b) => dayjs(b.updateTime).valueOf() - dayjs(a.updateTime).valueOf())
   }, [data, keyword, city])
 
@@ -118,21 +99,21 @@ const CollectionList: React.FC = () => {
     setModalOpen(true)
   }
 
-  const handleSubmit = (values: { collectionName: string; city?: string }) => {
+  const handleSubmit = (values: { collectionName: string; city?: number }) => {
     if (!user) return
     if (editing) {
       updateMutation.mutate({
         id: editing.id,
         collectionName: values.collectionName,
         createBy: editing.createBy,
-        city: user.roleId === 0 ? values.city : (editing.city || user.city || '湖北省'),
+        city: user.roleId === 0 ? values.city : Number(editing.city ?? user.city ?? 0),
       })
       return
     }
     createMutation.mutate({
       collectionName: values.collectionName,
       createBy: user.userId,
-      city: user.roleId === 0 ? values.city : (user.city || '湖北省'),
+      city: user.roleId === 0 ? values.city : Number(user.city ?? 0),
     })
   }
 
@@ -154,7 +135,7 @@ const CollectionList: React.FC = () => {
               allowClear
               placeholder="城市"
               style={{ width: 170 }}
-              options={cityOptions}
+              options={CITY_OPTIONS}
               value={city}
               onChange={(v) => setCity(v)}
             />
@@ -171,7 +152,13 @@ const CollectionList: React.FC = () => {
         }
       />
 
-      <Typography.Text className="muted">共 {filtered.length} 个向量库</Typography.Text>
+      <div className="admin-toolbar-panel">
+        <div className="admin-toolbar-meta">
+          <span className="admin-summary-chip">当前共 {filtered.length} 个向量库</span>
+          {city !== undefined ? <span className="admin-summary-chip subtle">已按城市筛选</span> : null}
+          {keyword ? <span className="admin-summary-chip subtle">已按关键词检索</span> : null}
+        </div>
+      </div>
 
       <div className="card-grid">
         {filtered.map((collection) => (
@@ -182,13 +169,21 @@ const CollectionList: React.FC = () => {
             extra={<span className="muted">{collection.id.slice(0, 6)}</span>}
           >
             <Space direction="vertical" size={8} style={{ width: '100%' }}>
-              <Typography.Text>创建人：{collection.createBy}</Typography.Text>
-              <Typography.Text>城市：{collection.city}</Typography.Text>
+              <div className="collection-card-meta">
+                <span className="collection-meta-pill">
+                  <UserOutlined />
+                  {collection.username || collection.createBy}
+                </span>
+                <span className="collection-meta-pill subtle">
+                  <EnvironmentOutlined />
+                  {getCityLabel(collection.city)}
+                </span>
+              </div>
               <Typography.Text className="muted">
                 更新时间：{dayjs(collection.updateTime).format('YYYY-MM-DD HH:mm')}
               </Typography.Text>
               <Space wrap>
-                <Button type="primary" onClick={() => navigate(`/collections/${collection.id}/documents`, {
+                <Button type="primary" icon={<FolderOpenOutlined />} onClick={() => navigate(`/collections/${collection.id}/documents`, {
                   state: { collectionName: collection.collectionName },
                 })}>
                   进入
@@ -197,6 +192,7 @@ const CollectionList: React.FC = () => {
                 <Popconfirm
                   title="确认删除该向量库？"
                   description="删除后将无法恢复"
+                  overlayClassName="admin-danger-popconfirm"
                   onConfirm={() => deleteMutation.mutate(collection.id)}
                 >
                   <Button danger>删除</Button>
@@ -208,6 +204,7 @@ const CollectionList: React.FC = () => {
       </div>
 
       <Modal
+        className="admin-form-modal"
         title={editing ? '编辑向量库' : '新建向量库'}
         open={modalOpen}
         onCancel={() => {
@@ -220,7 +217,7 @@ const CollectionList: React.FC = () => {
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ city: user?.city || '湖北省' }}
+          initialValues={{ city: Number(user?.city ?? 0) }}
           onFinish={handleSubmit}
         >
           <Form.Item
@@ -235,15 +232,16 @@ const CollectionList: React.FC = () => {
             name="city"
             rules={[{ required: true, message: '请选择所属城市' }]}
           >
-            <Select options={cityOptions} disabled={user?.roleId !== 0} placeholder="请选择城市" />
+            <Select options={CITY_OPTIONS} disabled={user?.roleId !== 0} placeholder="请选择城市" />
           </Form.Item>
         </Form>
       </Modal>
 
       {!isLoading && filtered.length === 0 && (
-        <Typography.Paragraph className="muted" style={{ marginTop: 12 }}>
-          暂无向量库，请先创建。
-        </Typography.Paragraph>
+        <AdminEmptyState
+          title="暂无向量库"
+          description="当前没有符合条件的向量库记录，可以先新建一个向量库。"
+        />
       )}
     </div>
   )

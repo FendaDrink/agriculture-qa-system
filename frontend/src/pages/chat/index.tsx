@@ -5,12 +5,14 @@ import MessageBubble from '../../components/MessageBubble'
 import {
   createSession,
   deleteSession,
+  generateSessionTitle,
   getFollowupSuggestions,
   listQuickQuestions,
   listMessages,
   listSessions,
   speechRecognizeByFile,
   streamCompletion,
+  updateSessionTitle,
   QuickQuestionItem,
 } from '@/services/chat'
 import { getAppSettings } from '@/services/settings'
@@ -19,6 +21,7 @@ import { ensureAuthed } from '@/utils/auth'
 import './index.scss'
 
 const PREFILL_KEY = 'agri:chat:prefill-question'
+const ACTIVE_SESSION_KEY = 'agri:chat:active-session-id'
 
 const ChatPage = () => {
   const [sessions, setSessions] = useState<ChatSession[]>([])
@@ -52,15 +55,80 @@ const ChatPage = () => {
   const completionTaskRef = useRef<Taro.RequestTask<any> | null>(null)
   const completionAbortedRef = useRef(false)
   const activeAssistantMessageIdRef = useRef('')
+  const streamRenderTimerRef = useRef<number | null>(null)
+  const streamBufferRef = useRef('')
+  const streamStartAtRef = useRef(0)
+  const streamTickerRef = useRef<number | null>(null)
 
   const [quickQuestions, setQuickQuestions] = useState<QuickQuestionItem[]>([])
   const [quickLoading, setQuickLoading] = useState(false)
   const [followupQuestions, setFollowupQuestions] = useState<string[]>([])
   const [followupLoading, setFollowupLoading] = useState(false)
+  const [streamElapsedSec, setStreamElapsedSec] = useState(0)
+  const [streamChars, setStreamChars] = useState(0)
+  const [streamStarted, setStreamStarted] = useState(false)
 
   const isIgnorableRecorderError = (err: unknown) => {
     const msg = String((err as any)?.errMsg || (err as any)?.message || err || '').toLowerCase()
     return msg.includes('notfound') || msg.includes('not found') || msg.includes('operate recorder')
+  }
+
+  const clearStreamRenderTimer = () => {
+    if (!streamRenderTimerRef.current) return
+    clearTimeout(streamRenderTimerRef.current)
+    streamRenderTimerRef.current = null
+  }
+
+  const flushStreamRender = (assistantMessageId?: string) => {
+    const targetId = assistantMessageId || activeAssistantMessageIdRef.current
+    if (!targetId) return
+    const content = streamBufferRef.current
+    if (!content) return
+    setMessages((prev) =>
+      prev.map((item) =>
+        item.id === targetId
+          ? {
+              ...item,
+              content,
+            }
+          : item,
+      ),
+    )
+  }
+
+  const stopStreamFeedback = () => {
+    if (streamTickerRef.current) {
+      clearInterval(streamTickerRef.current)
+      streamTickerRef.current = null
+    }
+    clearStreamRenderTimer()
+    streamBufferRef.current = ''
+    streamStartAtRef.current = 0
+    setStreamStarted(false)
+    setStreamElapsedSec(0)
+    setStreamChars(0)
+  }
+
+  const startStreamFeedback = () => {
+    stopStreamFeedback()
+    streamStartAtRef.current = Date.now()
+    setStreamStarted(true)
+    setStreamElapsedSec(0)
+    setStreamChars(0)
+    streamTickerRef.current = setInterval(() => {
+      if (!streamStartAtRef.current) return
+      setStreamElapsedSec(Math.max(0, Math.floor((Date.now() - streamStartAtRef.current) / 1000)))
+    }, 500) as unknown as number
+  }
+
+  const enqueueStreamRender = (assistantMessageId: string, full: string) => {
+    streamBufferRef.current = full
+    setStreamChars(full.length)
+    if (streamRenderTimerRef.current) return
+    streamRenderTimerRef.current = setTimeout(() => {
+      streamRenderTimerRef.current = null
+      flushStreamRender(assistantMessageId)
+    }, 48) as unknown as number
   }
 
   const safeStopRecorder = () => {
@@ -330,8 +398,8 @@ const ChatPage = () => {
     }
   }, [])
 
-  const buildSessionTitle = (query: string): string => {
-    const title = query.trim().slice(0, 10)
+  const buildFallbackSessionTitle = (query: string): string => {
+    const title = query.trim().slice(0, 18)
     return title || '新会话'
   }
 
@@ -413,6 +481,7 @@ const ChatPage = () => {
       // ignore abort errors
     }
     finalizeCanceledAssistantMessage()
+    stopStreamFeedback()
     setLoading(false)
   }
 
@@ -423,6 +492,7 @@ const ChatPage = () => {
       setSessions([])
       setMessages([])
       setActiveSessionId('')
+      Taro.setStorageSync(ACTIVE_SESSION_KEY, '')
       return ''
     }
 
@@ -431,11 +501,15 @@ const ChatPage = () => {
     if (all.length === 0) {
       setActiveSessionId('')
       setMessages([])
+      Taro.setStorageSync(ACTIVE_SESSION_KEY, '')
       return ''
     }
 
-    const target = all.find((item) => item.id === activeSessionId) || all[0]
+    const storedId = String(Taro.getStorageSync(ACTIVE_SESSION_KEY) || '')
+    const targetId = storedId || activeSessionId
+    const target = all.find((item) => item.id === targetId) || all[0]
     setActiveSessionId(target.id)
+    Taro.setStorageSync(ACTIVE_SESSION_KEY, target.id)
     await refreshMessages(target.id)
     return target.id
   }
@@ -451,14 +525,21 @@ const ChatPage = () => {
 
     let sessionId = sessionIdOverride || activeSessionId
     let assistantMessageId = ''
+    let createdNewSession = false
     completionAbortedRef.current = false
     completionTaskRef.current = null
 
     try {
       if (!sessionId) {
-        const created = await createSession(buildSessionTitle(query))
+        const suggestedTitle = await generateSessionTitle({
+          query,
+          model: settings.model,
+        }).catch(() => '')
+        const created = await createSession(suggestedTitle || buildFallbackSessionTitle(query))
         sessionId = created.id
+        createdNewSession = true
         setActiveSessionId(created.id)
+        Taro.setStorageSync(ACTIVE_SESSION_KEY, created.id)
         setSessions((prev) => [created, ...prev.filter((item) => item.id !== created.id)])
         setMessages([])
         setFollowupQuestions([])
@@ -479,11 +560,12 @@ const ChatPage = () => {
         id: assistantMessageId,
         sessionId,
         sender: 0,
-        content: '...',
+        content: '思考中…',
         createTime: new Date().toISOString(),
         status: 1,
       }
       setMessages((prev) => [...prev, tempUserMessage, tempAssistantMessage])
+      startStreamFeedback()
 
       const history = messages.filter((item) => item.status === 1).map((item) => {
         const { sender, content, extra } = item
@@ -498,20 +580,10 @@ const ChatPage = () => {
           query,
           sessionId,
           model: settings.model,
-          collectionId: settings.collectionId,
           history,
         },
         (_delta, full) => {
-          setMessages((prev) =>
-            prev.map((item) =>
-              item.id === assistantMessageId
-                ? {
-                    ...item,
-                    content: full,
-                  }
-                : item,
-            ),
-          )
+          enqueueStreamRender(assistantMessageId, full)
         },
         {
           onTaskCreated: (task) => {
@@ -519,8 +591,22 @@ const ChatPage = () => {
           },
         },
       )
+      clearStreamRenderTimer()
+      flushStreamRender(assistantMessageId)
+      stopStreamFeedback()
 
-      await refreshMessages(sessionId)
+      const latestMessages = await refreshMessages(sessionId)
+      if (createdNewSession) {
+        const latestAnswer = [...latestMessages].reverse().find((item) => item.sender === 0)?.content || ''
+        const refinedTitle = await generateSessionTitle({
+          query,
+          answer: latestAnswer,
+          model: settings.model,
+        }).catch(() => '')
+        if (refinedTitle) {
+          await updateSessionTitle(sessionId, refinedTitle).catch(() => null)
+        }
+      }
       await refreshSessions()
       refreshQuickQuestions().catch(() => {})
       refreshFollowupQuestions(sessionId, query).catch(() => {})
@@ -536,6 +622,7 @@ const ChatPage = () => {
         await refreshMessages(sessionId)
       }
     } finally {
+      stopStreamFeedback()
       completionTaskRef.current = null
       completionAbortedRef.current = false
       activeAssistantMessageIdRef.current = ''
@@ -550,6 +637,7 @@ const ChatPage = () => {
     }
     setSidebarCollapsed(true)
     setActiveSessionId('')
+    Taro.setStorageSync(ACTIVE_SESSION_KEY, '')
     setMessages([])
     setFollowupQuestions([])
     if (sidebarCollapsed) setSidebarCollapsed(false)
@@ -567,6 +655,7 @@ const ChatPage = () => {
       await deleteSession(sessionId)
       if (sessionId === activeSessionId) {
         setActiveSessionId('')
+        Taro.setStorageSync(ACTIVE_SESSION_KEY, '')
         setMessages([])
         setFollowupQuestions([])
       }
@@ -578,6 +667,7 @@ const ChatPage = () => {
 
   const onSwitchSession = async (sessionId: string) => {
     setActiveSessionId(sessionId)
+    Taro.setStorageSync(ACTIVE_SESSION_KEY, sessionId)
     await refreshMessages(sessionId)
     refreshFollowupQuestions(sessionId).catch(() => {})
     if (!sidebarCollapsed) setSidebarCollapsed(true)
@@ -610,6 +700,12 @@ const ChatPage = () => {
     }
   })
 
+  useEffect(() => {
+    return () => {
+      stopStreamFeedback()
+    }
+  }, [])
+
   usePullDownRefresh(() => {
     ;(async () => {
       try {
@@ -626,29 +722,45 @@ const ChatPage = () => {
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
   const lastAssistantId = [...messages].reverse().find((item) => item.sender === 0)?.id || ''
+  const loadingText = streamStarted
+    ? (streamChars > 0
+      ? `正在整理回答，已输出 ${streamChars} 字 · ${streamElapsedSec}s`
+      : `问题已提交，正在查询相关资料... ${streamElapsedSec}s`)
+    : '正在整理回答...'
 
   return (
     <View className='qa-page safe-shell'>
       <View className='toolbar'>
-        <Button className='ghost-btn' onClick={() => setSidebarCollapsed((v) => !v)}>
-          {sidebarCollapsed ? '展开会话' : '收起会话'}
-        </Button>
         <View className='toolbar-title'>
-          <Text className='title-main'>湖北省农业智能问答助手</Text>
-          <Text className='title-sub'>{activeSession?.title || '新对话'}</Text>
+          <View className='toolbar-title-head'>
+            <View className='session-toggle' onClick={() => setSidebarCollapsed((v) => !v)}>
+              <View className={`session-toggle-icon ${sidebarCollapsed ? 'collapsed' : 'expanded'}`}>
+                <Text className='session-toggle-line line-a' />
+                <Text className='session-toggle-line line-b' />
+                <Text className='session-toggle-line line-c' />
+              </View>
+            </View>
+            <View className='toolbar-copy'>
+              <Text className='title-main'>湖北农业问答助手</Text>
+              <Text className='title-sub'>{activeSession?.title || '新对话'}</Text>
+            </View>
+          </View>
         </View>
       </View>
 
       <View className='layout'>
         <View className={`session-panel ${sidebarCollapsed ? 'collapsed' : ''}`}>
           <View className='session-header'>
-            <Text className='session-header-text'>会话列表</Text>
+            <View>
+              <Text className='session-header-kicker'>历史会话</Text>
+              <Text className='session-header-text'>提问记录</Text>
+            </View>
             <Button className='mini-primary' size='mini' onClick={onNewSession}>
               新建
             </Button>
           </View>
           <ScrollView scrollY showScrollbar={false} className='session-scroll'>
-            {sessions.map((item) => (
+            {sessions.length > 0 ? sessions.map((item) => (
               <View
                 key={item.id}
                 className={`session-item ${item.id === activeSessionId ? 'active' : ''}`}
@@ -668,7 +780,13 @@ const ChatPage = () => {
                   删除
                 </Text>
               </View>
-            ))}
+            )) : (
+              <View className='session-empty'>
+                <Text className='session-empty-mark'>记</Text>
+                <Text className='session-empty-title'>暂无提问记录</Text>
+                <Text className='session-empty-desc'>提交过的问题会保存在这里，方便后续继续查看和补充提问。</Text>
+              </View>
+            )}
           </ScrollView>
         </View>
 
@@ -682,18 +800,25 @@ const ChatPage = () => {
           >
             {needsSetup ? (
               <View className='welcome-card'>
-                <Text className='welcome-title'>先完成连接配置，再开始问答</Text>
-                <Text className='welcome-tip'>请到“我的”页填写后端地址、用户ID并登录获取 Token。</Text>
-                <Button className='setup-btn' onClick={() => Taro.switchTab({ url: '/pages/profile/index' })}>
-                  去配置
+                <Text className='welcome-badge'>请先登录</Text>
+                <Text className='welcome-title'>登录后再使用问答服务</Text>
+                <Text className='welcome-tip'>登录后可保存提问记录，并继续查看和补充此前的咨询内容。</Text>
+                <Button className='setup-btn' onClick={() => Taro.navigateTo({ url: '/pages/login/index' })}>
+                  去登录
                 </Button>
               </View>
             ) : messages.length === 0 ? (
               <View className='welcome-card'>
-                <Text className='welcome-title'>请输入农业问题，系统将实时流式生成答案</Text>
+                <Text className='welcome-badge'>提问提示</Text>
+                <Text className='welcome-title'>请尽量完整描述种植情况</Text>
+                <Text className='welcome-tip'>建议写明作物、症状、地区、时间和天气，便于给出更准确的参考意见。</Text>
+                <View className='welcome-note'>
+                  <Text className='welcome-note-label'>示例</Text>
+                  <Text className='welcome-note-text'>例如：武汉番茄叶片发黄并带有白粉，最近连续阴雨，这种情况应如何处理？</Text>
+                </View>
                 <View className='quick-list'>
                   <View className='quick-tools'>
-                    <Text className='quick-tools-title'>高频问题引导</Text>
+                    <Text className='quick-tools-title'>常见问题</Text>
                     <Text className='quick-tools-refresh' onClick={() => refreshQuickQuestions(false)}>
                       {quickLoading ? '刷新中...' : '换一批'}
                     </Text>
@@ -707,7 +832,7 @@ const ChatPage = () => {
                     ))
                   ) : (
                     <View className='quick-item'>
-                      <Text>暂无高频问题，试试输入你的问题</Text>
+                      <Text>暂无推荐问题，可直接输入你的问题</Text>
                     </View>
                   )}
                 </View>
@@ -716,12 +841,12 @@ const ChatPage = () => {
               <>
                 {messages.map((item) => (
                   <View key={item.id}>
-                    <MessageBubble message={item} />
+                    <MessageBubble message={item} isStreaming={loading && item.id === lastAssistantId} />
                     {item.id === lastAssistantId && !loading ? (
                       <View className='followup-card'>
-                        <Text className='followup-title'>猜你继续想问</Text>
+                        <Text className='followup-title'>相关问题参考</Text>
                         {followupLoading ? (
-                          <Text className='followup-loading'>正在生成推荐...</Text>
+                          <Text className='followup-loading'>正在整理相关问题...</Text>
                         ) : followupQuestions.length > 0 ? (
                           <View className='followup-list'>
                             {followupQuestions.map((q) => (
@@ -731,7 +856,7 @@ const ChatPage = () => {
                             ))}
                           </View>
                         ) : (
-                          <Text className='followup-loading'>暂无推荐，可继续输入问题</Text>
+                          <Text className='followup-loading'>暂无相关问题，可继续补充提问</Text>
                         )}
                       </View>
                     ) : null}
@@ -739,7 +864,7 @@ const ChatPage = () => {
                 ))}
                 {loading ? (
                   <View className='ai-loading-shell'>
-                    <Text className='ai-loading-text'>AI 正在组织答案...</Text>
+                    <Text className='ai-loading-text'>{loadingText}</Text>
                     <View className='ai-loading-lines'>
                       <View className='ai-loading-line line-1' />
                       <View className='ai-loading-line line-2' />
@@ -751,65 +876,72 @@ const ChatPage = () => {
             )}
           </ScrollView>
 
-          <View className='composer safe-bottom'>
-            <Button
-              className='composer-mode'
-              disabled={loading || speechRecognizing}
-              onClick={() => {
-                if (recording) return
-                setInputMode((prev) => (prev === 'text' ? 'voice' : 'text'))
-              }}
-            >
-              {inputMode === 'text' ? '语音' : '键盘'}
-            </Button>
-            {inputMode === 'text' ? (
-              <Input
-                className='composer-input'
-                value={inputValue}
-                onInput={(e) => setInputValue(e.detail.value)}
-                placeholder='描述作物、症状、地区、天气等关键信息'
-                confirmType='send'
-                onConfirm={() => submitQuestion(inputValue)}
-                disabled={loading}
-              />
-            ) : (
+          <View className='composer-shell safe-bottom'>
+            <View className='composer'>
               <Button
-                className={`composer-hold ${recording ? 'recording' : ''} ${voiceWillCancel ? 'cancel' : ''}`}
-                disabled={loading || needsSetup || speechRecognizing}
-                onTouchStart={onVoiceTouchStart}
-                onTouchMove={onVoiceTouchMove}
-                onTouchEnd={onVoiceTouchEnd}
-                onTouchCancel={cancelVoiceInput}
+                className='composer-mode'
+                disabled={loading || speechRecognizing}
+                onClick={() => {
+                  if (recording) return
+                  setInputMode((prev) => (prev === 'text' ? 'voice' : 'text'))
+                }}
               >
+                {inputMode === 'text' ? '语音' : '键盘'}
+              </Button>
+              {inputMode === 'text' ? (
+                <Input
+                  className='composer-input'
+                  value={inputValue}
+                  onInput={(e) => setInputValue(e.detail.value)}
+                  placeholder='请输入你想咨询的问题'
+                  confirmType='send'
+                  onConfirm={() => submitQuestion(inputValue)}
+                  disabled={loading}
+                />
+              ) : (
+                <Button
+                  className={`composer-hold ${recording ? 'recording' : ''} ${voiceWillCancel ? 'cancel' : ''}`}
+                  disabled={loading || needsSetup || speechRecognizing}
+                  onTouchStart={onVoiceTouchStart}
+                  onTouchMove={onVoiceTouchMove}
+                  onTouchEnd={onVoiceTouchEnd}
+                  onTouchCancel={cancelVoiceInput}
+                >
                 {recording ? (voiceWillCancel ? '松开取消' : '松开转文字') : '按住说话'}
               </Button>
-            )}
-            {loading ? (
-              <Button className='composer-cancel-send' onClick={cancelCompletion}>
-                取消发送
-              </Button>
-            ) : inputMode === 'text' ? (
-              <Button
-                className='composer-send'
-                loading={speechRecognizing}
-                disabled={speechRecognizing || recording || !inputValue.trim()}
-                onClick={() => submitQuestion(inputValue)}
-              >
-                发送
-              </Button>
-            ) : null}
+              )}
+              {loading ? (
+                <Button className='composer-cancel-send' onClick={cancelCompletion}>
+                  {streamElapsedSec > 0 ? `取消 ${streamElapsedSec}s` : '取消发送'}
+                </Button>
+              ) : inputMode === 'text' ? (
+                <Button
+                  className='composer-send'
+                  loading={speechRecognizing}
+                  disabled={speechRecognizing || recording || !inputValue.trim()}
+                  onClick={() => submitQuestion(inputValue)}
+                >
+                  发送
+                </Button>
+              ) : null}
+            </View>
+            <View className='composer-foot'>
+              <Text className='composer-foot-tip'>
+                {inputMode === 'text' ? '建议尽量写明作物、地区和症状信息' : '不方便打字时，可按住直接说话'}
+              </Text>
+            </View>
           </View>
           {recording || speechRecognizing || speechDraft || speechError ? (
             <View className='voice-bar'>
               {recording ? (
                 <Text className='voice-bar-main'>
-                  {voiceWillCancel ? `松开将取消 (${recordingSeconds}s)` : `按住录音中 ${recordingSeconds}s，上滑取消，松开转文字`}
+                  {voiceWillCancel ? `松开后取消 (${recordingSeconds}s)` : `录音中 ${recordingSeconds}s，上滑可取消，松开后转成文字`}
                 </Text>
               ) : speechRecognizing ? (
-                <Text className='voice-bar-main'>正在识别语音...</Text>
+                <Text className='voice-bar-main'>正在转换语音内容...</Text>
               ) : null}
               {speechDraft ? (
-                <Text className='voice-bar-sub'>转写草稿：{speechDraft}</Text>
+                <Text className='voice-bar-sub'>转换内容：{speechDraft}</Text>
               ) : null}
               {speechError ? (
                 <Text className='voice-bar-error'>{speechError}</Text>

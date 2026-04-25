@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer'
 import { IsInt, IsPhoneNumber, IsString, IsNotEmpty, IsOptional } from 'class-validator'
 
 export class CreateUserDto {
@@ -9,9 +10,10 @@ export class CreateUserDto {
   @IsNotEmpty()
   username: string
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
   @IsOptional()
-  city?: string
+  city?: number
 
   @IsString()
   @IsNotEmpty()

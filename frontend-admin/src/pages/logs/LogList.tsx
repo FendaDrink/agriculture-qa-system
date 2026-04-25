@@ -16,6 +16,7 @@ import { ReloadOutlined } from '@ant-design/icons'
 import dayjs, { Dayjs } from 'dayjs'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import PageHeader from '../../components/PageHeader'
+import AdminEmptyState from '../../components/AdminEmptyState'
 import type { RequestLogDetail, RequestLogListItem } from '../../api/logs'
 import { getLogDetail, getLogs, getLogsMetrics } from '../../api/logs'
 
@@ -193,7 +194,8 @@ const LogList: React.FC = () => {
         }
       />
 
-      <Space wrap style={{ marginBottom: 12 }}>
+      <div className="admin-toolbar-panel">
+        <Space wrap style={{ marginBottom: 0 }}>
         <RangePicker
           showTime
           value={range}
@@ -268,7 +270,13 @@ const LogList: React.FC = () => {
             setPage(1)
           }}
         />
-      </Space>
+        </Space>
+        <div className="admin-toolbar-meta">
+          <span className="admin-summary-chip">当前日志 {listData?.total || 0} 条</span>
+          <span className="admin-summary-chip subtle">错误 {metricsData?.error ?? 0} 条</span>
+          <span className="admin-summary-chip subtle">平均耗时 {metricsData?.avgDurationMs ?? 0} ms</span>
+        </div>
+      </div>
 
       <Space wrap style={{ marginBottom: 12 }}>
         <Statistic title="请求数" value={metricsData?.total ?? 0} loading={metricsLoading} />
@@ -278,12 +286,91 @@ const LogList: React.FC = () => {
         <Statistic title="P95耗时" value={`${metricsData?.p95DurationMs ?? 0} ms`} loading={metricsLoading} />
       </Space>
 
+      <div className="admin-insight-grid" style={{ marginBottom: 16 }}>
+        <div className="admin-insight-card">
+          <div className="admin-insight-head">
+            <Typography.Text strong>高频接口</Typography.Text>
+            <span className="admin-summary-chip subtle">Top 3</span>
+          </div>
+          <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            {(metricsData?.topEndpoints || []).slice(0, 3).map((item) => (
+              <div key={`${item.method}-${item.path}`} className="admin-insight-row">
+                <div>
+                  <Tag bordered={false}>{item.method}</Tag>
+                  <Typography.Text>{item.path}</Typography.Text>
+                </div>
+                <Typography.Text strong>{item.count} 次</Typography.Text>
+              </div>
+            ))}
+            {!metricsLoading && !(metricsData?.topEndpoints?.length) ? (
+              <AdminEmptyState title="暂无高频接口" description="当前时间范围内还没有可汇总的接口请求。" />
+            ) : null}
+          </Space>
+        </div>
+
+        <div className="admin-insight-card">
+          <div className="admin-insight-head">
+            <Typography.Text strong>慢接口关注</Typography.Text>
+            <span className="admin-summary-chip subtle">平均耗时</span>
+          </div>
+          <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            {(metricsData?.slowEndpoints || []).slice(0, 3).map((item) => (
+              <div key={`${item.method}-${item.path}`} className="admin-insight-row">
+                <div>
+                  <Tag color="gold" bordered={false}>{item.method}</Tag>
+                  <Typography.Text>{item.path}</Typography.Text>
+                </div>
+                <Typography.Text strong>{item.avg} ms</Typography.Text>
+              </div>
+            ))}
+            {!metricsLoading && !(metricsData?.slowEndpoints?.length) ? (
+              <AdminEmptyState title="暂无慢接口" description="当前时间范围内未识别出需要重点关注的慢请求。" />
+            ) : null}
+          </Space>
+        </div>
+
+        <div className="admin-insight-card">
+          <div className="admin-insight-head">
+            <Typography.Text strong>最近错误</Typography.Text>
+            <span className="admin-summary-chip subtle">最近 3 条</span>
+          </div>
+          <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            {(metricsData?.recentErrors || []).slice(0, 3).map((item) => (
+              <div key={item.id} className="admin-insight-row admin-insight-row-clickable" onClick={() => openDetail(item)}>
+                <div>
+                  <Typography.Text strong>{item.statusCode}</Typography.Text>
+                  <Typography.Text style={{ marginLeft: 8 }}>{item.path}</Typography.Text>
+                </div>
+                <Typography.Text type="secondary">{dayjs(item.createTime).format('MM-DD HH:mm')}</Typography.Text>
+              </div>
+            ))}
+            {!metricsLoading && !(metricsData?.recentErrors?.length) ? (
+              <AdminEmptyState title="暂无错误日志" description="当前时间范围内没有最近错误记录。" />
+            ) : null}
+          </Space>
+        </div>
+      </div>
+
       <Table
+        className="admin-table"
         rowKey="id"
         loading={isLoading}
         dataSource={list}
         columns={columns as any}
         size="middle"
+        rowClassName={(record) => {
+          if (Number(record.statusCode) >= 400) return 'admin-row-danger'
+          if (Number(record.durationMs) >= 2000) return 'admin-row-warn'
+          return 'admin-row-soft'
+        }}
+        locale={{
+          emptyText: (
+            <AdminEmptyState
+              title="暂无日志记录"
+              description="当前筛选条件下没有日志数据，可调整时间范围或筛选条件后重试。"
+            />
+          ),
+        }}
         pagination={{
           current: page,
           pageSize,
@@ -303,6 +390,7 @@ const LogList: React.FC = () => {
       />
 
       <Drawer
+        className="admin-detail-drawer"
         title="日志详情"
         width={960}
         placement="right"
@@ -314,9 +402,11 @@ const LogList: React.FC = () => {
         destroyOnClose
       >
         {detailLoading ? (
-          <Typography.Text className="muted">加载中...</Typography.Text>
+          <div className="admin-detail-loading">
+            <Typography.Text className="muted">加载中...</Typography.Text>
+          </div>
         ) : detailData ? (
-          <div>
+          <div className="admin-detail-body">
             <Descriptions bordered size="small" column={2} style={{ marginBottom: 12 }}>
               <Descriptions.Item label="时间">{dayjs(detailData.createTime).format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
               <Descriptions.Item label="来源">{detailData.source}</Descriptions.Item>
@@ -364,4 +454,3 @@ const LogList: React.FC = () => {
 }
 
 export default LogList
-

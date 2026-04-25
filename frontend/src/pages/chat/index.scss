@@ -14,20 +14,7 @@
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 14px;
   margin-bottom: 14px;
-}
-
-.ghost-btn {
-  height: 64px;
-  line-height: 64px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
-  color: #1e6b47;
-  border: 1px solid rgba(22, 100, 66, 0.15);
-  padding: 0 18px;
-  font-size: 24px;
-  box-shadow: 0 8px 18px rgba(17, 68, 45, 0.08);
 }
 
 .toolbar-title {
@@ -38,6 +25,80 @@
   border: 1px solid rgba(18, 85, 57, 0.12);
   box-shadow: 0 10px 20px rgba(13, 54, 36, 0.08);
   backdrop-filter: blur(8px);
+}
+
+.toolbar-title-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  justify-content: flex-start;
+}
+
+.session-toggle {
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #edf7f1, #f7fbf8);
+  border: 1px solid rgba(18, 98, 63, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.session-toggle-icon {
+  position: relative;
+  width: 26px;
+  height: 20px;
+}
+
+.session-toggle-line {
+  position: absolute;
+  left: 0;
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: #1b6a46;
+}
+
+.session-toggle-line.line-a {
+  top: 0;
+  width: 24px;
+}
+
+.session-toggle-line.line-b {
+  top: 8px;
+  width: 24px;
+}
+
+.session-toggle-line.line-c {
+  top: 16px;
+  width: 24px;
+}
+
+.session-toggle-icon.expanded .line-a,
+.session-toggle-icon.expanded .line-c {
+  width: 16px;
+}
+
+.session-toggle-icon.expanded .line-b {
+  width: 24px;
+}
+
+.toolbar-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.title-kicker {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(19, 117, 72, 0.08);
+  color: #176845;
+  font-size: 17px;
+  letter-spacing: 0.3px;
 }
 
 .title-main {
@@ -90,7 +151,19 @@
   margin-bottom: 10px;
 }
 
+.session-header-kicker {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(18, 111, 70, 0.08);
+  color: #5f7c6e;
+  font-size: 16px;
+}
+
 .session-header-text {
+  display: block;
+  margin-top: 8px;
   font-size: 24px;
   font-weight: 600;
   color: #1d402f;
@@ -143,12 +216,15 @@
 }
 
 .session-item-title {
-  display: block;
+  display: -webkit-box;
   font-size: 24px;
+  line-height: 1.45;
   color: #1f3a2d;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .session-item-time {
@@ -161,6 +237,43 @@
 .session-item-delete {
   color: #bf3b3b;
   font-size: 22px;
+}
+
+.session-empty {
+  padding: 22px 14px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #f5faf7, #ffffff);
+  border: 1px dashed rgba(20, 98, 64, 0.16);
+  text-align: center;
+}
+
+.session-empty-mark {
+  display: inline-flex;
+  width: 56px;
+  height: 56px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #dff3e5, #bde7c8);
+  color: #15563a;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.session-empty-title {
+  display: block;
+  margin-top: 12px;
+  color: #184631;
+  font-size: 23px;
+  font-weight: 700;
+}
+
+.session-empty-desc {
+  display: block;
+  margin-top: 8px;
+  color: #6f877b;
+  font-size: 19px;
+  line-height: 1.6;
 }
 
 .chat-panel {
@@ -265,9 +378,20 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
+.welcome-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(18, 111, 70, 0.08);
+  color: #176443;
+  font-size: 18px;
+}
+
 .welcome-title {
   display: block;
-  margin-bottom: 14px;
+  margin-top: 12px;
+  margin-bottom: 10px;
   color: #1f4232;
   font-size: 26px;
   font-weight: 600;
@@ -277,6 +401,29 @@
   display: block;
   color: #6b8476;
   font-size: 22px;
+  line-height: 1.6;
+}
+
+.welcome-note {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #f4faf7, #ffffff);
+  border: 1px solid rgba(18, 103, 66, 0.08);
+}
+
+.welcome-note-label {
+  display: block;
+  color: #1a6643;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.welcome-note-text {
+  display: block;
+  margin-top: 6px;
+  color: #6a8377;
+  font-size: 19px;
   line-height: 1.6;
 }
 
@@ -316,6 +463,41 @@
   font-size: 21px;
 }
 
+.composer-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 0;
+  background: rgba(249, 252, 250, 0.86);
+}
+
+.composer-status-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #eef8f2, #e5f4eb);
+  color: #145d3c;
+  border: 1px solid rgba(17, 101, 65, 0.1);
+  font-size: 18px;
+}
+
+.composer-status-text {
+  text-align: right;
+  color: #658073;
+  font-size: 19px;
+}
+
+.composer-shell {
+  padding: 10px 12px 14px;
+  background:
+    linear-gradient(180deg, rgba(248, 251, 249, 0.92), rgba(241, 247, 243, 0.98));
+  border-top: 1px solid #dfebe4;
+  box-shadow: 0 -10px 24px rgba(12, 58, 37, 0.05);
+}
+
 .quick-item {
   display: flex;
   align-items: center;
@@ -337,9 +519,13 @@
   display: flex;
   gap: 10px;
   align-items: center;
-  padding: 14px;
-  border-top: 1px solid #dfebe4;
-  background: rgba(249, 252, 250, 0.86);
+  padding: 12px;
+  border: 1px solid rgba(20, 92, 62, 0.12);
+  border-radius: 20px;
+  background:
+    radial-gradient(160px 60px at 0% 0%, rgba(20, 126, 78, 0.08), rgba(20, 126, 78, 0)),
+    rgba(255, 255, 255, 0.95);
+  box-shadow: 0 12px 24px rgba(13, 62, 41, 0.08);
 }
 
 .composer-mode {
@@ -411,6 +597,17 @@
   border-color: #efb2a5;
 }
 
+.composer-foot {
+  padding: 10px 4px 0;
+}
+
+.composer-foot-tip {
+  display: block;
+  color: #6e877b;
+  font-size: 18px;
+  line-height: 1.55;
+}
+
 .voice-bar {
   padding: 0 14px 12px;
   background: rgba(249, 252, 250, 0.86);
@@ -456,6 +653,10 @@
     padding: 10px 14px;
   }
 
+  .toolbar-title-head {
+    gap: 12px;
+  }
+
   .title-main {
     font-size: 28px;
   }
@@ -474,7 +675,21 @@
   }
 
   .composer {
-    padding: 12px;
+    padding: 10px;
+  }
+
+  .composer-status {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 12px 12px 0;
+  }
+
+  .composer-status-text {
+    text-align: left;
+  }
+
+  .composer-shell {
+    padding: 10px 10px 12px;
   }
 
   .composer-mode,

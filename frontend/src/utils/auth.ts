@@ -50,7 +50,7 @@ export const ensureAuthed = async () => {
   if (!token) {
     const current = Taro.getCurrentPages()?.slice(-1)[0]
     const route = (current as any)?.route || ''
-    if (!['pages/login', 'pages/home', 'pages/faq'].includes(route)) {
+    if (!['pages/login', 'pages/register', 'pages/home', 'pages/faq'].some((item) => route.startsWith(item))) {
       await Taro.navigateTo({ url: '/pages/login/index' })
       return false
     }

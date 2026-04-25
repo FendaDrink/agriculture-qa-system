@@ -2,7 +2,7 @@
  * collections 表
  */
 import { Entity, Column, PrimaryColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm'
-import { IsDate, IsString } from 'class-validator'
+import { IsDate, IsInt, IsString } from 'class-validator'
 
 @Entity('collections')
 export class CollectionEntity {
@@ -14,9 +14,9 @@ export class CollectionEntity {
   @IsString()
   collectionName: string
 
-  @Column({ comment: '所属城市', default: '湖北省' })
-  @IsString()
-  city: string
+  @Column({ type: 'int', comment: '所属城市编码', default: 0 })
+  @IsInt()
+  city: number
 
   @Column({ name: 'create_by', comment: '创建人ID' })
   @IsString()

@@ -4,8 +4,10 @@ export default defineAppConfig({
     'pages/chat/index',
     'pages/pdf-viewer/index',
     'pages/faq/index',
+    'pages/todo/index',
     'pages/profile/index',
     'pages/login/index',
+    'pages/register/index',
     'pages/sessions/index'
   ],
   window: {
@@ -21,10 +23,10 @@ export default defineAppConfig({
     },
   },
   tabBar: {
-    color: '#73877b',
-    selectedColor: '#0f6a43',
-    backgroundColor: '#ffffff',
-    borderStyle: 'black',
+    color: '#6e8175',
+    selectedColor: '#1a7b51',
+    backgroundColor: '#f8fbf8',
+    borderStyle: 'white',
     list: [
       {
         pagePath: 'pages/home/index',
@@ -40,9 +42,15 @@ export default defineAppConfig({
       },
       {
         pagePath: 'pages/faq/index',
-        text: '常见问答',
+        text: '常见问题',
         iconPath: 'assets/images/message.png',
         selectedIconPath: 'assets/images/message_active.png',
+      },
+      {
+        pagePath: 'pages/todo/index',
+        text: '待办',
+        iconPath: 'assets/images/todo.png',
+        selectedIconPath: 'assets/images/todo_active.png',
       },
       {
         pagePath: 'pages/profile/index',
